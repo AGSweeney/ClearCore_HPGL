@@ -74,6 +74,7 @@ private:
     void drawGrid(float halfExtent);
     void drawAxes(float length);
     void drawProgramPath();
+    void drawProgress();
     void drawPathIssueMarkers();
     void drawTool();
 

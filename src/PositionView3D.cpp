@@ -333,6 +333,8 @@ void PositionView3D::paintGL() {
     if (m_pathTraceEnabled && (!m_cutStrips.isEmpty() || m_programPath.size() >= 2)) {
         drawProgramPath();
     }
+    // Plot progress is shown even with "Path" off: it is what the pen has actually drawn.
+    drawProgress();
     if (m_pathTraceEnabled && !m_pathIssues.isEmpty()) {
         drawPathIssueMarkers();
     }
@@ -404,21 +406,6 @@ void PositionView3D::drawProgramPath() {
             }
             f->glEnd();
         }
-        // Plot progress: what the pen has already drawn, green and a little heavier.
-        if (!m_doneStrips.isEmpty()) {
-            f->glColor3f(0.25f, 0.9f, 0.45f);
-            f->glLineWidth(2.8f);
-            for (const QVector<QVector3D> &strip : m_doneStrips) {
-                if (strip.size() < 2) {
-                    continue;
-                }
-                f->glBegin(GL_LINE_STRIP);
-                for (const QVector3D &p : strip) {
-                    f->glVertex3f(p.x(), p.y(), p.z() + 0.01f);
-                }
-                f->glEnd();
-            }
-        }
     } else {
         // Legacy fallback: single yellow strip (rapids included)
         f->glColor3f(1.0f, 0.92f, 0.2f);
@@ -426,6 +413,26 @@ void PositionView3D::drawProgramPath() {
         f->glBegin(GL_LINE_STRIP);
         for (const QVector3D &p : m_programPath) {
             f->glVertex3f(p.x(), p.y(), p.z());
+        }
+        f->glEnd();
+    }
+}
+
+void PositionView3D::drawProgress() {
+    QOpenGLFunctions_2_1 *f = gl21();
+    if (!f || m_doneStrips.isEmpty()) {
+        return;
+    }
+    f->glDisable(GL_LIGHTING);
+    f->glColor3f(0.25f, 0.9f, 0.45f);
+    f->glLineWidth(2.8f);
+    for (const QVector<QVector3D> &strip : m_doneStrips) {
+        if (strip.size() < 2) {
+            continue;
+        }
+        f->glBegin(GL_LINE_STRIP);
+        for (const QVector3D &p : strip) {
+            f->glVertex3f(p.x(), p.y(), p.z() + 0.01f);
         }
         f->glEnd();
     }

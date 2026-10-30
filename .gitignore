@@ -1,0 +1,15 @@
+# CMake / build outputs (ProjectData/build also has its own .gitignore)
+ProjectData/build/*
+!ProjectData/build/.gitignore
+build/
+out/
+CMakeUserPresets.json
+
+# IDE
+.vs/
+.vscode/
+.cursor/
+
+# Python
+__pycache__/
+*.py[cod]

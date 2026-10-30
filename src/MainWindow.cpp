@@ -545,6 +545,11 @@ void MainWindow::BuildUi() {
     pos3dHeader->addWidget(m_lockTopDownViewCheck);
     m_leftDragOrbitCheck = new QCheckBox("L-drag rotate", pos3dGroup);
     pos3dHeader->addWidget(m_leftDragOrbitCheck);
+    m_followPenCheck = new QCheckBox("Follow pen", pos3dGroup);
+    m_followPenCheck->setToolTip(
+        "On: the view follows the pen and the drawing slides under it. "
+        "Off: the drawing stays still and the pen moves across it; Reset view centres the drawing.");
+    pos3dHeader->addWidget(m_followPenCheck);
     auto *reset3d = new QPushButton("Reset view", pos3dGroup);
     pos3dHeader->addWidget(reset3d);
     pos3dOuter->addLayout(pos3dHeader);
@@ -562,6 +567,10 @@ void MainWindow::BuildUi() {
     connect(m_lockTopDownViewCheck, &QCheckBox::toggled, this, [this](bool on) {
         m_positionView3D->setTopDownLocked(on);
         AppSettings().setValue("ui/viewportTopDownLocked", on);
+    });
+    connect(m_followPenCheck, &QCheckBox::toggled, this, [this](bool on) {
+        m_positionView3D->setFollowTool(on);
+        AppSettings().setValue("ui/viewportFollowPen", on);
     });
     connect(m_leftDragOrbitCheck, &QCheckBox::toggled, this, [this](bool on) {
         m_positionView3D->setLeftDragOrbitEnabled(on);
@@ -974,6 +983,9 @@ void MainWindow::LoadDxf(const QString &path) {
     m_preview->setPlainText(FormatHpglForDisplay(JobHpgl(), kMaxPreviewChars));
     AppendLog(QStringLiteral("Loaded DXF: %1 (%2 polylines)").arg(path).arg(m_dxfPolylinesMm.size()));
     RebuildPreview();
+    if (!m_followPenCheck->isChecked()) {
+        m_positionView3D->resetView();  /* fixed view: centre the new drawing */
+    }
 }
 
 void MainWindow::LoadHpgl(const QString &path) {
@@ -990,6 +1002,9 @@ void MainWindow::LoadHpgl(const QString &path) {
     m_preview->setPlainText(FormatHpglForDisplay(m_hpglFile, kMaxPreviewChars));
     AppendLog(QStringLiteral("Loaded HP-GL: %1 (%2 bytes)").arg(path).arg(m_hpglFile.size()));
     RebuildPreview();
+    if (!m_followPenCheck->isChecked()) {
+        m_positionView3D->resetView();
+    }
 }
 
 QVector3D MainWindow::DxfPlacementOffset() const {
@@ -1202,10 +1217,13 @@ void MainWindow::UpdateProgress(const PlotterLink::Status &s) {
             bestT = t;
         }
     }
-    m_progressMs = now;
     if (best < 0 || (best == m_progressSeg && bestT <= m_progressT)) {
+        /* No match: keep the time of the last match so the search window keeps growing.
+         * Resetting it here capped the window at one poll interval, and after a few missed
+         * samples the pen was out of reach for good (progress stopped after a few shapes). */
         return;
     }
+    m_progressMs = now;
     m_progressSeg = best;
     m_progressT = bestT;
     PushProgressToView();
@@ -1511,6 +1529,13 @@ void MainWindow::LoadWindowUiSettings() {
         const QSignalBlocker blocker(m_lockTopDownViewCheck);
         m_lockTopDownViewCheck->setChecked(td);
         m_positionView3D->setTopDownLocked(td);
+    }
+    {
+        const bool follow = AppSettings().value("ui/viewportFollowPen", false).toBool();
+        const QSignalBlocker blocker(m_followPenCheck);
+        m_followPenCheck->setChecked(follow);
+        m_positionView3D->setFollowTool(follow);
+        m_positionView3D->resetView();
     }
     {
         const bool orbit = AppSettings().value("ui/viewportLeftDragOrbitEnabled", false).toBool();

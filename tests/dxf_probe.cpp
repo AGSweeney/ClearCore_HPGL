@@ -4,6 +4,7 @@
 #include "DxfImport.h"
 
 #include <QCoreApplication>
+#include <QFile>
 
 #include <cfloat>
 #include <cstdio>
@@ -39,5 +40,18 @@ int main(int argc, char **argv) {
                 maxY - minY);
     const QByteArray hpgl = BuildHpglFromPolylinesMm(out.polylinesMm).toLatin1() + "\nPU;SP0;\n";
     std::printf("job HP-GL: %d bytes, %d instructions (';')\n", int(hpgl.size()), int(hpgl.count(';')));
+    if (argc > 2) {
+        /* Write the job as the app sends it with "Place DXF at origin" on. */
+        QVector<QVector<QVector3D>> placed = out.polylinesMm;
+        for (auto &strip : placed) {
+            for (QVector3D &p : strip) {
+                p -= QVector3D(minX, minY, 0.f);
+            }
+        }
+        QFile f(QString::fromLocal8Bit(argv[2]));
+        if (f.open(QIODevice::WriteOnly)) {
+            f.write(BuildHpglFromPolylinesMm(placed).toLatin1() + "\nPU;SP0;\n");
+        }
+    }
     return 0;
 }

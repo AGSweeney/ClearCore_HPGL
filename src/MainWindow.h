@@ -147,6 +147,7 @@ private:
     QCheckBox *m_pathCheck = nullptr;
     QCheckBox *m_lockTopDownViewCheck = nullptr;
     QCheckBox *m_leftDragOrbitCheck = nullptr;
+    QCheckBox *m_followPenCheck = nullptr;
     bool m_didWorkAreaInitialSplit = false;
     int m_savedLogPaneHeight = 320;
 

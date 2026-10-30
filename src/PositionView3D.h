@@ -45,6 +45,10 @@ public:
     bool isTopDownLocked() const { return m_topDownLocked; }
     /// When false (default), left mouse alone does not orbit; use checkbox in main UI to enable.
     void setLeftDragOrbitEnabled(bool on);
+    /// true: the camera follows the pen (drawing slides under it). false: the view stays put
+    /// and the pen moves across the drawing. Switching keeps the current view where it is.
+    void setFollowTool(bool on);
+    bool isFollowTool() const { return m_followTool; }
     bool isLeftDragOrbitEnabled() const { return m_leftDragOrbitEnabled; }
 
 signals:
@@ -92,7 +96,9 @@ private:
     QString m_droOverlayText;
     QPoint m_lastMouse;
     /// World-space offset of the orbit / look-at target from the DRO tool position (pan).
-    QVector3D m_viewPan{0.f, 0.f, 0.f};
+    QVector3D m_viewPan{0.f, 0.f, 0.f};      // offset from the pen (follow) or absolute target (fixed)
+    bool m_followTool = true;
+    QVector3D orbitTarget() const;
     bool m_topDownLocked = false;
     bool m_leftDragOrbitEnabled = false;
 };

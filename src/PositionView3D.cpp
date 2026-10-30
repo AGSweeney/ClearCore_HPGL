@@ -222,10 +222,37 @@ void PositionView3D::setLeftDragOrbitEnabled(bool on) {
     update();
 }
 
+QVector3D PositionView3D::orbitTarget() const {
+    return m_followTool ? QVector3D(m_x, m_y, m_z) + m_viewPan : m_viewPan;
+}
+
+void PositionView3D::setFollowTool(bool on) {
+    if (on == m_followTool) {
+        return;
+    }
+    const QVector3D tool(m_x, m_y, m_z);
+    m_viewPan = on ? m_viewPan - tool : m_viewPan + tool;  /* same target, no jump */
+    m_followTool = on;
+    update();
+}
+
 void PositionView3D::resetView() {
     m_azDeg = m_topDownLocked ? 0.0f : 35.0f;
     m_elDeg = m_topDownLocked ? 89.5f : 30.0f;
     m_viewPan = QVector3D(0.f, 0.f, 0.f);
+    if (!m_followTool) {
+        /* Fixed view: centre on the drawing (or the pen when nothing is loaded). */
+        QVector3D lo(1e30f, 1e30f, 0.f), hi(-1e30f, -1e30f, 0.f);
+        for (const QVector<QVector3D> &strip : m_cutStrips) {
+            for (const QVector3D &p : strip) {
+                lo.setX(qMin(lo.x(), p.x()));
+                lo.setY(qMin(lo.y(), p.y()));
+                hi.setX(qMax(hi.x(), p.x()));
+                hi.setY(qMax(hi.y(), p.y()));
+            }
+        }
+        m_viewPan = (lo.x() <= hi.x()) ? (lo + hi) * 0.5f : QVector3D(m_x, m_y, m_z);
+    }
     // ~20" or ~500 mm: fits a 24" floor without the camera being miles away (200 was 200" in G20).
     m_distance = 20.0f * m_gridCellStep;
     update();
@@ -285,7 +312,7 @@ void PositionView3D::paintGL() {
     proj.perspective(fov, aspect, zNear, zFar);
 
     const QVector3D tool(m_x, m_y, m_z);
-    const QVector3D at = tool + m_viewPan;
+    const QVector3D at = orbitTarget();
     const QVector3D eye = eyeFromOrbit(at, m_distance, m_azDeg, m_elDeg);
     QMatrix4x4 view;
     view.lookAt(eye, at, lookAtUpHint(eye, at, m_azDeg, m_topDownLocked));
@@ -554,7 +581,7 @@ void PositionView3D::computeClipFromWorld(QMatrix4x4 *clipFromWorld) const {
     QMatrix4x4 proj;
     proj.perspective(45.0f, aspect, 0.5f, 100000.0f);
     const QVector3D tool(m_x, m_y, m_z);
-    const QVector3D at = tool + m_viewPan;
+    const QVector3D at = orbitTarget();
     const QVector3D eye = eyeFromOrbit(at, dist, m_azDeg, elDeg);
     QMatrix4x4 view;
     view.lookAt(eye, at, lookAtUpHint(eye, at, m_azDeg, m_topDownLocked));
@@ -701,7 +728,7 @@ void PositionView3D::mouseMoveEvent(QMouseEvent *event) {
         const int ph = qMax(1, height());
         const float paspect = float(pw) / float(ph);
         const QVector3D tool(m_x, m_y, m_z);
-        const QVector3D at = tool + m_viewPan;
+        const QVector3D at = orbitTarget();
         const QVector3D eye = eyeFromOrbit(at, m_distance, m_azDeg, m_elDeg);
         QVector3D right;
         QVector3D up;

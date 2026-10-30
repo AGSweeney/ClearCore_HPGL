@@ -20,6 +20,8 @@ qt_add_executable(ClearHPGL WIN32
     src/PlotterLink.cpp
     src/HpglPreview.h
     src/HpglPreview.cpp
+    src/PlotterSettingsDialog.h
+    src/PlotterSettingsDialog.cpp
     src/DxfImport.h
     src/DxfImport.cpp
     src/PathGapBridge.h
@@ -69,4 +71,23 @@ if (CLEARHPGL_BUILD_TESTS)
     )
     target_include_directories(test_plotterlink PRIVATE src Firmware/ClearCoreFirmware)
     target_link_libraries(test_plotterlink PRIVATE Qt6::Core Qt6::Network Qt6::SerialPort Qt6::Gui)
+endif()
+if (CLEARHPGL_BUILD_TESTS)
+    # Visual check of the settings dialog: render_settings_dialog <config.txt> <out.png>
+    qt_add_executable(render_settings_dialog
+        tests/render_settings_dialog.cpp
+        src/MainWindow.cpp src/MainWindow.h
+        src/PlotterSettingsDialog.cpp src/PlotterSettingsDialog.h
+        src/PositionView3D.cpp src/PositionView3D.h
+        src/PlotterLink.cpp src/PlotterLink.h
+        src/HpglPreview.cpp src/HpglPreview.h
+        src/DxfImport.cpp src/DxfImport.h
+        src/PathGapBridge.cpp src/PathGapBridge.h
+        src/PathVizIssues.cpp src/PathVizIssues.h
+        resources/app_resources.qrc
+        Firmware/ClearCoreFirmware/Hpgl.cpp
+    )
+    target_include_directories(render_settings_dialog PRIVATE src Firmware/ClearCoreFirmware)
+    target_link_libraries(render_settings_dialog PRIVATE Qt6::OpenGLWidgets Qt6::OpenGL Qt6::Widgets Qt6::Svg
+                          Qt6::SerialPort Qt6::Network)
 endif()

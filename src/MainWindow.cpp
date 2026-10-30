@@ -4,6 +4,7 @@
 #include "HpglPreview.h"
 #include "PathGapBridge.h"
 #include "PathVizIssues.h"
+#include "PlotterSettingsDialog.h"
 #include "PositionView3D.h"
 
 #include <QAction>
@@ -916,61 +917,15 @@ void MainWindow::ShowPlotterSettings() {
 }
 
 void MainWindow::ShowSettingsDialog(const QStringList &configLines) {
-    static const QRegularExpression kLine(QStringLiteral("^(\\S+)\\s+=\\s+(\\S*)\\s*(.*)$"));
-    QDialog dlg(this);
-    dlg.setWindowTitle("Plotter settings");
-    dlg.resize(640, 640);
-    auto *outer = new QVBoxLayout(&dlg);
-    auto *note = new QLabel(
-        "Saved to the plotter's NVM as soon as you press OK. [disabled] settings need the motors disabled; "
-        "[restart] settings apply after a restart.",
-        &dlg);
-    note->setWordWrap(true);
-    outer->addWidget(note);
-    auto *scroll = new QScrollArea(&dlg);
-    scroll->setWidgetResizable(true);
-    auto *inner = new QWidget(scroll);
-    auto *form = new QFormLayout(inner);
-    QMap<QString, QLineEdit *> edits;
-    QMap<QString, QString> original;
-    for (const QString &l : configLines) {
-        const QRegularExpressionMatch m = kLine.match(l);
-        if (!m.hasMatch()) {
-            continue;
-        }
-        auto *edit = new QLineEdit(m.captured(2), inner);
-        edit->setToolTip(m.captured(3));
-        auto *label = new QLabel(m.captured(1), inner);
-        label->setToolTip(m.captured(3));
-        auto *row = new QWidget(inner);
-        auto *rowLayout = new QHBoxLayout(row);
-        rowLayout->setContentsMargins(0, 0, 0, 0);
-        rowLayout->addWidget(edit, 1);
-        auto *help = new QLabel(m.captured(3), row);
-        help->setStyleSheet("QLabel { color: #9fa6af; }");
-        rowLayout->addWidget(help, 2);
-        form->addRow(label, row);
-        edits.insert(m.captured(1), edit);
-        original.insert(m.captured(1), m.captured(2));
-    }
-    scroll->setWidget(inner);
-    outer->addWidget(scroll, 1);
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
-    outer->addWidget(buttons);
-    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    PlotterSettingsDialog dlg(configLines, this);
     if (dlg.exec() != QDialog::Accepted) {
         return;
     }
-    int changes = 0;
-    for (auto it = edits.cbegin(); it != edits.cend(); ++it) {
-        const QString v = it.value()->text().trimmed();
-        if (v != original.value(it.key()) && !v.isEmpty()) {
-            Command(QStringLiteral("set %1 %2").arg(it.key(), v));
-            changes++;
-        }
+    const QStringList cmds = dlg.changedCommands();
+    for (const QString &cmd : cmds) {
+        Command(cmd);
     }
-    if (changes > 0) {
+    if (!cmds.isEmpty()) {
         Command("config");
     }
 }

@@ -1208,9 +1208,28 @@ void MainWindow::ResetProgress() {
 // and only as far as the plotter could have travelled since the last match, so crossings and
 // repeated passes over the same spot do not make progress jump ahead.
 void MainWindow::UpdateProgress(const PlotterLink::Status &s) {
-    if (m_plan.isEmpty() || !s.valid || !s.penDown) {
-        /* Only pen-down samples advance progress. A pen-up sample cannot tell which shape is
-         * next, and matching it to a later pen-up hop jumped progress past shapes not drawn. */
+    if (m_plan.isEmpty() || !s.valid) {
+        return;
+    }
+    if (!s.penDown) {
+        /* Pen-up samples never match ahead (they cannot tell which shape is next, and matching
+         * a later pen-up hop jumped past undrawn shapes). But a lift while plotting means the
+         * current pen-down run is finished: complete it now, otherwise the tail of a short move
+         * after the last pen-down sample stayed yellow until the next shape started. Pause also
+         * lifts the pen, mid-shape, so only "plotting" counts. */
+        if (s.state == QLatin1String("plotting") && m_progressSeg >= 0 && m_plan[m_progressSeg].cut) {
+            const int strip = m_plan[m_progressSeg].strip;
+            int last = m_progressSeg;
+            while (last + 1 < m_plan.size() && m_plan[last + 1].cut && m_plan[last + 1].strip == strip) {
+                last++;
+            }
+            if (last != m_progressSeg || m_progressT < 1.f) {
+                m_progressSeg = last;
+                m_progressT = 1.f;
+                m_progressMs = QDateTime::currentMSecsSinceEpoch();
+                PushProgressToView();
+            }
+        }
         return;
     }
     const qint64 now = QDateTime::currentMSecsSinceEpoch();

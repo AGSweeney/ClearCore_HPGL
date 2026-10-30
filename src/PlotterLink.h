@@ -51,7 +51,9 @@ public:
     Transport transport() const { return m_transport; }
     QString host() const { return m_host; }
 
-    void discover();
+    // Broadcast on every IPv4 subnet, plus a direct query to each of directHosts, sent twice
+    // 0.5 s apart: the board's first reply can be lost while it resolves this PC's MAC (ARP).
+    void discover(const QStringList &directHosts = QStringList());
 
     // Console command (status, enable, set k v, ...). Replies come back through
     // commandFinished in the order sent. Polling "status" is added automatically.
@@ -93,6 +95,7 @@ private:
     void finishCommand(bool ok);
     void parseStatusLine(const QString &line);
     void parseSerialReply(const QString &line);
+    void sendDiscoveryRound(const QStringList &directHosts, bool log);
     void writeJobChunk();
     void writeSerialJobChunk();
     void failJob(const QString &message);

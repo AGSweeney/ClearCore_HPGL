@@ -5,6 +5,7 @@
 #include <QByteArray>
 #include <QMainWindow>
 #include <QMap>
+#include <QSet>
 #include <QString>
 #include <QVector>
 #include <QVector3D>
@@ -161,6 +162,7 @@ private:
     double m_plotWidthMm = 400.0;
     double m_plotHeightMm = 300.0;
     bool m_settingsDialogPending = false;
+    QSet<QString> m_discoverySeen;
 
     // Job
     bool m_jobSending = false;

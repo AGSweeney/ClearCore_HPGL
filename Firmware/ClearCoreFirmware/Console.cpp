@@ -95,7 +95,7 @@ bool ConsoleHandleLine(const char *lineIn, ConsoleOut out) {
         }
     }
     const char *cmd = tok[0];
-    char buf[256];
+    char buf[400];
 
     if (Eq(cmd, "help") || Eq(cmd, "?") || Eq(cmd, "menu")) {
         out("Commands:");

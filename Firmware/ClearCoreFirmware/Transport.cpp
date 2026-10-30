@@ -51,6 +51,7 @@ static bool g_ethernetReady = false;
 static bool g_tcpConnected = false;
 static bool g_consoleConnected = false;
 static uint32_t g_tcpJobs = 0;
+static uint32_t g_tcpRead = 0;
 static char g_consoleLine[CHPGL_MAX_LINE];
 static uint16_t g_consoleLen = 0;
 
@@ -337,6 +338,7 @@ static void PollTcpHpgl() {
         if (n <= 0) {
             break;
         }
+        g_tcpRead += (uint32_t)n;
         for (int16_t i = 0; i < n; i++) {
             Ingest(CH_TCP, buf[i]);
         }
@@ -621,12 +623,15 @@ const char *TransportOrigin() {
 void TransportStats(char *buf, size_t len) {
     snprintf(buf, len,
              "source=%s usb_in=%lu com=%s com_in=%lu com_overflow=%lu tcp_in=%lu tcp_jobs=%lu "
-             "tcp_connected=%d console=%d instr=%lu unknown=%lu labels_skipped=%lu hpgl_error=%d ip=%s",
+             "tcp_connected=%d tcp_avail=%d tcp_live=%d tcp_read=%lu discard=%d active_hpgl=%d console=%d "
+             "instr=%lu unknown=%lu labels_skipped=%lu hpgl_error=%d ip=%s",
              g_active >= 0 ? kChannelName[g_active] : "none", (unsigned long)g_ch[CH_USB].BytesIn(),
              g_com ? (g_com == &ConnectorCOM0 ? "COM-0" : "COM-1") : "off",
              (unsigned long)g_ch[CH_COM].BytesIn(), (unsigned long)g_ch[CH_COM].Overflows(),
              (unsigned long)g_ch[CH_TCP].BytesIn(), (unsigned long)g_tcpJobs, g_tcpConnected ? 1 : 0,
-             g_consoleConnected ? 1 : 0, (unsigned long)g_hpgl.InstructionCount(),
+             g_tcpConnected ? (int)g_tcpClient.BytesAvailable() : -1,
+             g_tcpConnected ? (g_tcpClient.Connected() ? 1 : 0) : -1, (unsigned long)g_tcpRead,
+             g_discard[CH_TCP] ? 1 : 0, g_active, g_consoleConnected ? 1 : 0, (unsigned long)g_hpgl.InstructionCount(),
              (unsigned long)g_hpgl.UnknownCount(), (unsigned long)g_hpgl.LabelsSkipped(), g_hpgl.Error(),
              TransportIpString());
 }

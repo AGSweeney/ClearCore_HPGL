@@ -45,6 +45,19 @@ int main(int argc, char **argv) {
     }
 
     PlotterLink link;
+    if (argc > 2 && QString::fromLocal8Bit(argv[2]) == QLatin1String("--discover-only")) {
+        std::printf("discover\n");
+        QStringList found;
+        QObject::connect(&link, &PlotterLink::logLine, [](const QString &l) { std::printf("  %s\n", qPrintable(l)); });
+        QObject::connect(&link, &PlotterLink::deviceDiscovered, [&](const QString &h, const QString &info) {
+            std::printf("  found %s: %s\n", qPrintable(h), qPrintable(info));
+            found << h;
+        });
+        link.discover();
+        WaitFor([&]() { return false; }, 2000);
+        Check(found.contains(host), "board answers discovery");
+        return g_failures == 0 ? 0 : 1;
+    }
     QStringList lastLines;
     bool lastOk = false;
     QString lastCmd;

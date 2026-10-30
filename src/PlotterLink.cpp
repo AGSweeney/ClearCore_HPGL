@@ -143,11 +143,21 @@ void PlotterLink::onSerialError(QSerialPort::SerialPortError err) {
 /* Discovery                                                                  */
 /* ------------------------------------------------------------------------- */
 
-void PlotterLink::discover() {
+void PlotterLink::discover(const QStringList &directHosts) {
     if (m_udp.state() != QAbstractSocket::BoundState) {
         m_udp.bind(QHostAddress::AnyIPv4, 0, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
     }
+    sendDiscoveryRound(directHosts, true);
+    QTimer::singleShot(500, this, [this, directHosts]() { sendDiscoveryRound(directHosts, false); });
+}
+
+void PlotterLink::sendDiscoveryRound(const QStringList &directHosts, bool log) {
     QSet<QString> targets;
+    for (const QString &h : directHosts) {
+        if (!QHostAddress(h).isNull()) {
+            targets.insert(h);
+        }
+    }
     for (const QNetworkInterface &iface : QNetworkInterface::allInterfaces()) {
         const auto flags = iface.flags();
         if (!flags.testFlag(QNetworkInterface::IsUp) || !flags.testFlag(QNetworkInterface::IsRunning) ||
@@ -160,12 +170,17 @@ void PlotterLink::discover() {
             }
         }
     }
-    if (targets.isEmpty()) {
-        targets.insert(QHostAddress(QHostAddress::Broadcast).toString());
+    if (targets.size() == directHosts.size()) {
+        targets.insert(QHostAddress(QHostAddress::Broadcast).toString());  /* no subnet broadcast found */
     }
     for (const QString &t : targets) {
-        m_udp.writeDatagram(kDiscoveryRequest, QHostAddress(t), kDiscoveryPort);
-        emit logLine(QStringLiteral("TX UDP: CLEARHPGL_DISCOVER? -> %1:%2").arg(t).arg(kDiscoveryPort));
+        const qint64 n = m_udp.writeDatagram(kDiscoveryRequest, QHostAddress(t), kDiscoveryPort);
+        if (log || n < 0) {
+            emit logLine(QStringLiteral("TX UDP: CLEARHPGL_DISCOVER? -> %1:%2%3")
+                             .arg(t)
+                             .arg(kDiscoveryPort)
+                             .arg(n < 0 ? QStringLiteral(" (failed: %1)").arg(m_udp.errorString()) : QString()));
+        }
     }
 }
 

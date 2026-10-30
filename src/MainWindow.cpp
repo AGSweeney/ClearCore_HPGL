@@ -139,7 +139,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             m_deviceCombo->addItem(QStringLiteral("%1  (%2)").arg(host, info.section(QLatin1Char(' '), 1, 1)), host);
         }
         m_deviceCombo->setCurrentIndex(m_deviceCombo->findData(host));
-        AppendLog(QStringLiteral("RX UDP %1: %2").arg(host, info));
+        if (!m_discoverySeen.contains(host)) {
+            m_discoverySeen.insert(host);
+            AppendLog(QStringLiteral("RX UDP %1: %2").arg(host, info));
+        }
     });
 }
 
@@ -700,7 +703,26 @@ void MainWindow::RefreshPorts() {
 }
 
 void MainWindow::Discover() {
-    m_link.discover();
+    m_discoverySeen.clear();
+    QStringList direct;
+    const QString typed = m_deviceCombo->currentText().section(QLatin1Char(' '), 0, 0).trimmed();
+    if (!typed.isEmpty()) {
+        direct << typed;
+    }
+    const QString saved = AppSettings().value("connection/ethernetHost").toString();
+    if (!saved.isEmpty() && saved != typed) {
+        direct << saved;
+    }
+    m_link.discover(direct);
+    QTimer::singleShot(1500, this, [this]() {
+        if (m_discoverySeen.isEmpty()) {
+            AppendLog("Discover: no plotter answered on UDP 9302. Check the cable and that the PC has an "
+                      "address on the plotter's subnet, or type the plotter's IP and Connect.");
+            statusBar()->showMessage("No plotter found", 6000);
+        } else {
+            statusBar()->showMessage(QStringLiteral("Found %1 plotter(s)").arg(m_discoverySeen.size()), 6000);
+        }
+    });
 }
 
 void MainWindow::ConnectOrDisconnect() {

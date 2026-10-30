@@ -200,6 +200,18 @@ if (-not $SkipDeploy) {
         throw "windeployqt failed with exit code $LASTEXITCODE."
     }
     Write-Host "windeployqt completed."
+
+    # Qt 6's --compiler-runtime only drops vc_redist.x64.exe. Also copy the CRT DLLs next to the
+    # exe (app-local deployment) so the folder runs on a PC without the VC++ redistributable.
+    $vsRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $VsDevCmd))
+    $crt = Get-ChildItem -Path (Join-Path $vsRoot "VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT") -Directory -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1
+    if ($crt) {
+        Copy-Item -Path (Join-Path $crt.FullName "*.dll") -Destination (Split-Path -Parent $appExe) -Force
+        Write-Host "Copied MSVC runtime DLLs from $($crt.FullName)"
+    } else {
+        Write-Warning "MSVC runtime DLLs not found under $vsRoot\VC\Redist; ship vc_redist.x64.exe instead."
+    }
 } else {
     Write-Host "Skipping windeployqt (-SkipDeploy)."
 }

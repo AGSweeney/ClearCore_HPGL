@@ -45,7 +45,9 @@ void ConsoleBanner(ConsoleOut out) {
     out(buf);
     snprintf(buf, sizeof(buf), "IP %s   HP-GL on USB, TCP %u%s   settings: %s", TransportIpString(),
              (unsigned)CHPGL_TCP_HPGL_PORT, g_settings.comPort ? ", COM" : "",
-             SettingsFromNvm() ? "NVM" : "defaults");
+             SettingsFromNvm() ? "NVM"
+             : SettingsImportedFrom() ? "defaults, network from previous firmware"
+                                      : "defaults");
     out(buf);
     out("Type help for commands.");
 }
@@ -111,7 +113,15 @@ bool ConsoleHandleLine(const char *lineIn, ConsoleOut out) {
         for (uint16_t i = 0; SettingsFormat(i, buf, sizeof(buf)); i++) {
             out(buf);
         }
-        out(SettingsFromNvm() ? "(stored in NVM)" : "(defaults; not stored yet)");
+        if (SettingsFromNvm()) {
+            out("(stored in NVM)");
+        } else if (SettingsImportedFrom()) {
+            snprintf(buf, sizeof(buf), "(defaults; network imported from %s NVM; saved on first set)",
+                     SettingsImportedFrom());
+            out(buf);
+        } else {
+            out("(defaults; not stored yet)");
+        }
         out("ok");
     } else if (Eq(cmd, "set")) {
         if (n < 3) {

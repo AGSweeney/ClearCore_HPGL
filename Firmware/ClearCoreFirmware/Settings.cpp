@@ -74,14 +74,67 @@ void SettingsDefaults() {
     g_settings.checksum = Checksum(&g_settings);
 }
 
+/* Network settings left by another firmware on this board. Only the address is taken;
+ * motion settings from other firmwares mean different things and are never applied.
+ * Offsets are fixed by those firmwares' packed blob layouts:
+ *   ClearCoreROS 'CROS', every version: netMode at 62, then ip, netmask, gateway.
+ *   ClearAI 'CAIC' version 7 (210 bytes): netMode at 194, then ip, netmask, gateway. */
+static const uint32_t ROS_NVM_MAGIC = 0x534F5243u;    /* 'CROS' */
+static const uint32_t CLEARAI_NVM_MAGIC = 0x43414943u; /* 'CAIC' */
+static const char *g_importedFrom = nullptr;
+
+static bool ImportNetwork(const uint8_t *blob, size_t len) {
+    uint32_t magic;
+    uint16_t version, size;
+    memcpy(&magic, blob, 4);
+    memcpy(&version, blob + 4, 2);
+    memcpy(&size, blob + 6, 2);
+    size_t at = 0;
+    const char *from = nullptr;
+    if (magic == ROS_NVM_MAGIC && version >= 1 && version <= 4 && size >= 75) {
+        at = 62;
+        from = "ClearCoreROS";
+    } else if (magic == CLEARAI_NVM_MAGIC && version == 7 && size == 210) {
+        at = 194;
+        from = "ClearAI";
+    } else {
+        return false;
+    }
+    if (at + 13 > len) {
+        return false;
+    }
+    const uint8_t mode = blob[at];
+    const uint8_t *ip = blob + at + 1;
+    if (mode > 1) {
+        return false;
+    }
+    if (mode == 1 && ((ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0) || ip[0] == 255)) {
+        return false;
+    }
+    g_settings.netMode = mode;
+    memcpy(g_settings.ip, ip, 4);
+    memcpy(g_settings.netmask, blob + at + 5, 4);
+    memcpy(g_settings.gateway, blob + at + 9, 4);
+    g_settings.checksum = Checksum(&g_settings);
+    g_importedFrom = from;
+    return true;
+}
+
+const char *SettingsImportedFrom() {
+    return g_importedFrom;
+}
+
 void SettingsLoad() {
+    uint8_t raw[ClearCore::NvmManager::NVM_LOC_RESERVED_TEKNIC];
+    Nvm().BlockRead(ClearCore::NvmManager::NVM_LOC_USER_START, (int)sizeof(raw), raw);
     PlotterSettings s;
-    memset(&s, 0, sizeof(s));
-    Nvm().BlockRead(ClearCore::NvmManager::NVM_LOC_USER_START, (int)sizeof(s), (uint8_t *)&s);
+    memcpy(&s, raw, sizeof(s));
     if (s.magic != CHPGL_NVM_MAGIC || s.version != CHPGL_NVM_VERSION ||
         s.size != sizeof(PlotterSettings) || s.checksum != Checksum(&s)) {
         SettingsDefaults();
         g_fromNvm = false;
+        /* Not written back: the other firmware's blob stays intact until the first save. */
+        ImportNetwork(raw, sizeof(raw));
         return;
     }
     s.ident[sizeof(s.ident) - 1] = '\0';

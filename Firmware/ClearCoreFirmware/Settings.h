@@ -70,6 +70,9 @@ void SettingsDefaults();
 void SettingsLoad();
 bool SettingsSave();
 bool SettingsFromNvm();
+/* "ClearCoreROS" / "ClearAI" when the network settings came from that firmware's
+ * NVM blob (no ClearHPGL settings saved yet); nullptr otherwise. */
+const char *SettingsImportedFrom();
 
 /* Console access. Returns nullptr on success or an error message. */
 const char *SettingsSet(const char *key, const char *value, bool motorsEnabled, bool *needsRestart);

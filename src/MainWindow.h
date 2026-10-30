@@ -1,36 +1,34 @@
 #pragma once
 
+#include "PlotterLink.h"
+
+#include <QByteArray>
 #include <QMainWindow>
-#include <QHostAddress>
-#include <QSerialPort>
-#include <QStringList>
-#include <QTcpSocket>
-#include <QTimer>
-#include <QUdpSocket>
-#include <QList>
+#include <QMap>
+#include <QString>
 #include <QVector>
 #include <QVector3D>
 
-#include <array>
-
-class QCheckBox;
-class QComboBox;
-class QCloseEvent;
-class QShowEvent;
-class QLabel;
-class QGroupBox;
-class QLineEdit;
 class QAction;
+class QCheckBox;
+class QCloseEvent;
+class QComboBox;
+class QGroupBox;
+class QLabel;
+class QLineEdit;
+class QProgressBar;
 class QPushButton;
-class QTextEdit;
-class QWidget;
+class QShowEvent;
 class QSplitter;
 class QTabWidget;
+class QTextEdit;
+class QWidget;
 class PositionView3D;
 
+// Host for ClearHPGL_Firmware: open a DXF or HP-GL file, preview it, and plot it
+// over Ethernet (TCP 9100 + console 9300) or a serial port. See Firmware/PROTOCOL.md.
 class MainWindow : public QMainWindow {
     Q_OBJECT
-
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
@@ -41,227 +39,131 @@ protected:
 
 private slots:
     void RefreshPorts();
-    void DiscoverEthernetDevices();
+    void Discover();
     void ConnectOrDisconnect();
-    void OnSerialReadyRead();
-    void OnTcpReadyRead();
-    void OnTcpDisconnected();
-    void OnTelemetryReadyRead();
-    void OnTelemetryDisconnected();
-    void OnUdpReadyRead();
-    void OnSerialError(QSerialPort::SerialPortError error);
-    void SendStatusPoll();
-    void SendEnable();
-    void SendDisable();
-    void SendStop();
-    void SendEmergencyStop();
-    void SendSetAbs();
-    void SendSetRel();
-    void SendZero();
-    void ValidateFeedInput();
-    void ShowMotionParametersDialog();
-    void SendMove();
-    void SendJogXPos();
-    void SendJogXNeg();
-    void SendJogYPos();
-    void SendJogYNeg();
-    void SendJogZPos();
-    void SendJogZNeg();
-    void SendJogAPos();
-    void SendJogANeg();
-    void LoadGCodeProgram();
-    void LoadDxfFile();
-    void OpenGCodeProgramFromMenu();
-    void OpenDxfFromMenu();
-    void StartGCodeProgram();
-    void PauseGCodeProgram();
-    void StopGCodeProgram();
     void UpdateTransportUi();
+    void OpenDrawing();
+    void StartPlot();
+    void StopPlot();
+    void TogglePause();
+    void GotoTarget();
+    void Jog(double dxMm, double dyMm);
+    void ShowPlotterSettings();
+    void ExportHpgl();
+    void SaveDxfGeometryAs();
     void OnPathIssueQuickFixCloseContour(int stripIndex);
     void OnPathIssueQuickFixMergeAcrossRapid(int rapidPairIndex);
-    void SaveDxfGeometryAs();
+
+    void OnStatus(const PlotterLink::Status &status);
+    void OnCommandFinished(const QString &command, bool ok, const QStringList &lines);
+    void OnJobProgress(qint64 sent, qint64 total);
+    void OnJobSent();
+    void OnJobFailed(const QString &message);
+    void OnLinkLost(const QString &reason);
 
 private:
+    enum class SourceKind { None, Dxf, Hpgl };
+
     void BuildUi();
     void SetConnectedUi(bool connected);
-    void SetMotionModeUi(bool absoluteMode);
-    void ApplyGuiUnitsUi();
-    void LoadMotionSettings();
-    void SaveMotionSettings();
-    void SyncActiveMotionSettingsFromPorts();
-    double MaxFeedInGuiUnits() const;
-    bool EnsureFeedWithinLimit();
-    bool IsControllerConnected() const;
-    bool IsTelemetryConnected() const;
-    void DisableControllerBeforeDisconnect();
-    void SendActiveUnitsCommand();
-    void SendMotionConfigCommand();
+    void UpdateMachineButtons();
     void AppendLog(const QString &line);
-    void SendCommand(const QString &command);
-    void SendJog(double dx, double dy);
-    QString CleanGCodeLine(const QString &line) const;
-    bool ProgramLineRequiresQueueDrain(const QString &line) const;
-    bool ProgramLineIsTerminalStop(const QString &line) const;
-    bool ProgramLineQueuesMotion(const QString &line) const;
-    void SendCurrentProgramLineAfterDrain();
-    void SendNextProgramLine();
-    void HandleProgramResponse(const QString &line);
-    void SetProgramUiRunning(bool running);
-    void HandleReceivedLine(const QString &line);
-    void HandleTelemetryLine(const QString &line);
-    void UpdateProgramPreviewHighlight(int lineIndex, bool autoScroll);
-    void ResetProgramTrackingState();
-    void ReconcileProgramQueueFromStatus(double queueDepth, double active, int activeLine);
-    void UpdateDroFromTelemetry(const QString &line);
-    void UpdateDroOverlayText();
-    bool IsLogicalAxisEnabled(int axis) const; // 1=X .. 4=4th; uses motor port Enabled + axis mapping
-    /// True if the mapped 4th-axis motor is rotary (deg); false = linear (same units as X–Z).
-    bool IsLogicalAxisRotary(int axis1Based) const;
-    void UpdateAxisCapabilityUi();
-    void UpdateConnectionWindowTitle(bool connected);
-    void UpdateControllerEnabledStateUi();
-    void UpdateHardwareEstopButtonUi();
-    void RebuildProgramVizKinematics();
-    void UpdateToolVizForViewport();
-    void SetBufferIndicatorFull(bool full);
-    void SetLogPanelVisible(bool visible);
-    void LoadWindowUiSettings();
-    void SaveWindowUiSettings();
-    void LoadGCodeProgramImpl(bool focusProgramTabOnSuccess);
-    void LoadDxfFileImpl(bool focusProgramTabOnSuccess);
-    void ClearDxfPreviewState();
+    void Command(const QString &line);
+
+    void LoadDxf(const QString &path);
+    void LoadHpgl(const QString &path);
+    QByteArray JobHpgl() const;
+    QVector<QVector<QVector3D>> PlacedDxfStrips() const;
+    QVector3D DxfPlacementOffset() const;
+    void RebuildPreview();
+    void UpdatePlotInfo();
+    void ApplyDeviceConfig(const QStringList &lines);
+    void ShowSettingsDialog(const QStringList &configLines);
     void PromptSaveDxfAfterGeometryFix();
     QString SuggestedDxfSavePath() const;
 
-    QSerialPort m_serial;
-    QTcpSocket m_tcpSocket;
-    QTcpSocket m_telemetrySocket;
-    QUdpSocket m_udpSocket;
-    QTimer m_pollTimer;
+    void SetLogPanelVisible(bool visible);
+    void LoadWindowUiSettings();
+    void SaveWindowUiSettings();
 
-    QComboBox *m_transportCombo;
-    QComboBox *m_portCombo;
-    QComboBox *m_deviceCombo;
-    QComboBox *m_baudCombo;
-    QPushButton *m_refreshPortsButton;
-    QPushButton *m_discoverButton;
-    QPushButton *m_connectButton;
-    QWidget *m_serialSettingsWidget;
-    QWidget *m_ethernetSettingsWidget;
-    QPushButton *m_enableButton;
-    QPushButton *m_disableButton;
-    QPushButton *m_stopButton;
-    QPushButton *m_estopButton;
-    QPushButton *m_absButton;
-    QPushButton *m_relButton;
-    QPushButton *m_zeroButton;
+    PlotterLink m_link;
 
-    QLabel *m_targetXLabel;
-    QLabel *m_targetYLabel;
-    QLabel *m_targetZLabel;
-    QLabel *m_targetALabel;
-    QLineEdit *m_moveXEdit;
-    QLineEdit *m_moveYEdit;
-    QLineEdit *m_moveZEdit;
-    QLineEdit *m_moveAEdit;
-    QLineEdit *m_feedEdit;
-    QPushButton *m_moveButton;
+    // Connection
+    QComboBox *m_transportCombo = nullptr;
+    QComboBox *m_portCombo = nullptr;
+    QComboBox *m_baudCombo = nullptr;
+    QComboBox *m_flowCombo = nullptr;
+    QComboBox *m_deviceCombo = nullptr;
+    QPushButton *m_refreshPortsButton = nullptr;
+    QPushButton *m_discoverButton = nullptr;
+    QPushButton *m_connectButton = nullptr;
+    QWidget *m_serialSettingsWidget = nullptr;
+    QWidget *m_ethernetSettingsWidget = nullptr;
 
-    QLineEdit *m_jogStepEdit;
-    QPushButton *m_jogXPosButton;
-    QPushButton *m_jogXNegButton;
-    QPushButton *m_jogYPosButton;
-    QPushButton *m_jogYNegButton;
-    QPushButton *m_jogZPosButton;
-    QPushButton *m_jogZNegButton;
-    QPushButton *m_jogAPosButton;
-    QPushButton *m_jogANegButton;
+    // Machine control
+    QPushButton *m_enableButton = nullptr;
+    QPushButton *m_disableButton = nullptr;
+    QPushButton *m_abortButton = nullptr;
+    QPushButton *m_pauseButton = nullptr;
+    QPushButton *m_originButton = nullptr;
+    QPushButton *m_clearFaultButton = nullptr;
+    QLabel *m_stateLabel = nullptr;
 
-    QTextEdit *m_programPreview;
-    QLabel *m_programStatusLabel;
-    QLabel *m_bufferStatusLabel;
-    QPushButton *m_loadProgramButton;
-    QPushButton *m_loadDxfButton;
-    QAction *m_saveDxfGeometryAction{nullptr};
-    QPushButton *m_runProgramButton;
-    QPushButton *m_pauseProgramButton;
-    QPushButton *m_stopProgramButton;
+    // Jog tab
+    QLineEdit *m_gotoXEdit = nullptr;
+    QLineEdit *m_gotoYEdit = nullptr;
+    QPushButton *m_gotoButton = nullptr;
+    QLineEdit *m_jogStepEdit = nullptr;
+    QList<QPushButton *> m_jogButtons;
+    QPushButton *m_penUpButton = nullptr;
+    QPushButton *m_penDownButton = nullptr;
 
-    QPushButton *m_clearLogButton;
-    QPushButton *m_minimizeLogButton;
-    QTextEdit *m_logEdit;
-    QGroupBox *m_logGroup;
-    QAction *m_toggleLogAction;
-    QAction *m_laserModeAction;  // unused — laser mode removed, kept to avoid init list churn
-    QPushButton *m_showLogButton;
+    // Plot tab
+    QPushButton *m_openButton = nullptr;
+    QPushButton *m_plotButton = nullptr;
+    QPushButton *m_stopButton = nullptr;
+    QCheckBox *m_placeAtOriginCheck = nullptr;
+    QProgressBar *m_progress = nullptr;
+    QLabel *m_plotInfoLabel = nullptr;
+    QTextEdit *m_preview = nullptr;
+    QAction *m_saveDxfGeometryAction = nullptr;
+    QAction *m_exportHpglAction = nullptr;
 
-    QSplitter *m_workAreaSplitter;
-    QSplitter *m_mainVSplitter;
-    QTabWidget *m_workTabs;
-    QWidget *m_programWorkTab;
-    PositionView3D *m_positionView3D;
-    QCheckBox *m_viewportPathTraceCheck;
-    QCheckBox *m_lockTopDownViewCheck;
-    QCheckBox *m_viewportLeftDragOrbitCheck;
-    double m_vizX;
-    double m_vizY;
-    double m_vizZ;
-    double m_vizA;
+    // Log, layout, 3D
+    QTextEdit *m_logEdit = nullptr;
+    QGroupBox *m_logGroup = nullptr;
+    QAction *m_toggleLogAction = nullptr;
+    QPushButton *m_showLogButton = nullptr;
+    QSplitter *m_workAreaSplitter = nullptr;
+    QSplitter *m_mainVSplitter = nullptr;
+    QTabWidget *m_workTabs = nullptr;
+    QWidget *m_plotTab = nullptr;
+    PositionView3D *m_positionView3D = nullptr;
+    QCheckBox *m_pathCheck = nullptr;
+    QCheckBox *m_lockTopDownViewCheck = nullptr;
+    QCheckBox *m_leftDragOrbitCheck = nullptr;
+    bool m_didWorkAreaInitialSplit = false;
+    int m_savedLogPaneHeight = 320;
 
-    struct MotorPortSettings {
-        bool enabled = false;
-        int axis = 0; // 0=None, 1=X, 2=Y, 3=Z, 4=4th
-        int axisType = 0; // 0=Linear, 1=Rotary
-        double stepsPerRev = 800.0;
-        double linearPitchMm = 5.0;
-        double gearRatio = 1.0;
-        double maxRpm = 300.0;
-        double accel = 85000.0;
-        double decel = 85000.0;
-    };
-
-    std::array<MotorPortSettings, 4> m_motorPorts;
-    double m_stepsPerUnit;
-    double m_velocity;
-    double m_accel;
-    double m_decel;
-    /// Per-axis max velocity delta at junctions (steps/sec). 0 = GRBL angle-based fallback.
-    double m_junctionDVmax;
-    bool m_guiUnitsInches;
-    /// When true, CONFIG SINGLE=1 (independent M0/M1; no CoordinatedMotionController in firmware).
-    bool m_singleMotorBench;
-    bool m_laserMode;  // always false — laser mode removed
-    /// Max G0 rapid: linear axes stored in mm/min (GUI inches converts for display only).
-    double m_rapidMmMinX;
-    double m_rapidMmMinY;
-    double m_rapidMmMinZ;
-    /// Fourth mapped axis: deg/min when that port is rotary, else mm/min (internal).
-    double m_rapidRateFourth;
-
-    QStringList m_programLines;
-    QString m_programPath;
-    bool m_dxfPreviewActive = false;
+    // Drawing
+    SourceKind m_source = SourceKind::None;
+    QString m_sourcePath;
     QVector<QVector<QVector3D>> m_dxfPolylinesMm;
     QVector<QVector3D> m_dxfRapidSegmentsMm;
-    QString m_dxfHpglText;
-    QString m_dxfSourcePath;
     int m_dxfInsunits = 0;
     double m_dxfDrawingToMmScale = 25.4;
-    int m_programIndex;
-    bool m_programRunning;
-    bool m_programPaused;
-    bool m_programAwaitingAck;
-    bool m_programWaitingForQueueDrain;
-    int m_queueDrainStalledPolls;
-    int m_programQueueFullRetries;
-    int m_activeProgramLine;
-    QList<int> m_pendingMotionLineIndices;
-    bool m_controllerEnabled;
-    /// -1 = unknown (no HwEstopOk yet); 0 = hardware estop chain fault (RED); 1 = OK (YELLOW).
-    int m_hwDi6EstopState;
+    QByteArray m_hpglFile;
+    QVector<QVector<QVector3D>> m_previewStripsMm;
+    QVector<QVector3D> m_previewRapidsMm;
 
-    bool m_usingEthernet;
-    bool m_didWorkAreaInitialSplit; // one-time 40/60 work-area sizes on first show
-    int m_savedLogPaneHeight;
+    // Plotter (from "config"; defaults match the firmware)
+    QMap<QString, QString> m_deviceConfig;
+    double m_plotWidthMm = 400.0;
+    double m_plotHeightMm = 300.0;
+    bool m_settingsDialogPending = false;
+
+    // Job
+    bool m_jobSending = false;
+    bool m_jobAwaitingFinish = false;
+    bool m_jobSawBusy = false;
 };
-

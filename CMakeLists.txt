@@ -16,8 +16,10 @@ qt_add_executable(ClearHPGL WIN32
     src/MainWindow.cpp
     src/PositionView3D.h
     src/PositionView3D.cpp
-    src/GCodeProgramKinematics.h
-    src/GCodeProgramKinematics.cpp
+    src/PlotterLink.h
+    src/PlotterLink.cpp
+    src/HpglPreview.h
+    src/HpglPreview.cpp
     src/DxfImport.h
     src/DxfImport.cpp
     src/PathGapBridge.h
@@ -25,7 +27,12 @@ qt_add_executable(ClearHPGL WIN32
     src/PathVizIssues.h
     src/PathVizIssues.cpp
     resources/app_resources.qrc
+    # The firmware's HP-GL interpreter (portable C++), so the preview matches the plotter.
+    Firmware/ClearCoreFirmware/Hpgl.h
+    Firmware/ClearCoreFirmware/Hpgl.cpp
 )
+
+target_include_directories(ClearHPGL PRIVATE Firmware/ClearCoreFirmware)
 
 target_link_libraries(ClearHPGL PRIVATE
     Qt6::OpenGLWidgets
@@ -46,4 +53,20 @@ if (WIN32)
         )
     endif()
     target_link_libraries(ClearHPGL PRIVATE shell32)
+endif()
+
+# Headless protocol test: run Firmware/host/fake_plotter.py (or use a real board), then
+# ProjectData/build/<Config>/test_plotterlink.exe [host]
+option(CLEARHPGL_BUILD_TESTS "Build test_plotterlink" ON)
+if (CLEARHPGL_BUILD_TESTS)
+    qt_add_executable(test_plotterlink
+        tests/test_plotterlink.cpp
+        src/PlotterLink.h
+        src/PlotterLink.cpp
+        src/HpglPreview.h
+        src/HpglPreview.cpp
+        Firmware/ClearCoreFirmware/Hpgl.cpp
+    )
+    target_include_directories(test_plotterlink PRIVATE src Firmware/ClearCoreFirmware)
+    target_link_libraries(test_plotterlink PRIVATE Qt6::Core Qt6::Network Qt6::SerialPort Qt6::Gui)
 endif()

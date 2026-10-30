@@ -171,4 +171,3 @@ Stored in the NVM user page with magic `CHPG`, so blobs left by ClearAI (`CAIC`)
 - `LB` text (needs a stroke font), fills for `RA` / `RR` / `WG` / `FP`, line types (`LT`), `PW` pen width.
 - Homing to limit switches; soft limits beyond the hard clip.
 - Multi-pen carousel (`SP` n > 1 is accepted but does not pause for a pen change).
-- The ClearHPGL desktop app still speaks the ClearCNC protocol. It needs an HP-GL output path (TCP 9100) and a console client (TCP 9300) before it can drive this firmware.

@@ -633,6 +633,40 @@ void PlotterTelemetry(char *buf, size_t len) {
              g_physPenDown ? 1 : 0, StateName(), (unsigned)g_count);
 }
 
+void PlotterDiag(void (*out)(const char *line)) {
+    char buf[200];
+    snprintf(buf, sizeof(buf), "bursts=%lu (samples asking > %ld steps) excess_carried M0=%lu M1=%lu",
+             (unsigned long)g_xy.BurstCount(), (long)CoordinatedMotionController::BURST_THRESHOLD,
+             (unsigned long)ConnectorM0.CoordinatedExcessSteps(),
+             (unsigned long)ConnectorM1.CoordinatedExcessSteps());
+    out(buf);
+    /* Controller position vs pulses actually sent to each motor (compare with the ClearPath's
+     * own commanded count to tell software bookkeeping loss from lost pulses on the wire). */
+    snprintf(buf, sizeof(buf),
+             "timing: max_irq_off=%lu us (QueueLinear/QueueArc)  max_update_gap=%lu us (nominal 200)  "
+             "late_updates(>250us)=%lu",
+             (unsigned long)(g_xy.MaxIrqOffCycles() / 120u), (unsigned long)(g_xy.MaxUpdateGapCycles() / 120u),
+             (unsigned long)g_xy.LateUpdates());
+    out(buf);
+    snprintf(buf, sizeof(buf), "controller x=%ld y=%ld  pulses_sent M0=%ld M1=%ld",
+             (long)g_xy.CurrentX(), (long)g_xy.CurrentY(), (long)ConnectorM0.PositionRefCommanded(),
+             (long)ConnectorM1.PositionRefCommanded());
+    out(buf);
+    CoordinatedMotionController::BurstEvent ev[CoordinatedMotionController::BURST_LOG_SIZE];
+    const uint8_t n = g_xy.BurstLog(ev, CoordinatedMotionController::BURST_LOG_SIZE);
+    for (uint8_t i = 0; i < n; i++) {
+        const CoordinatedMotionController::BurstEvent &e = ev[i];
+        snprintf(buf, sizeof(buf),
+                 "ms=%lu path=%s q=%u steps=%ld,%ld seg=(%ld,%ld)->(%ld,%ld) last=(%ld,%ld) "
+                 "entry=%lu exit=%lu nominal=%lu",
+                 (unsigned long)e.ms, e.path == 1 ? "clamp" : (e.path == 0 ? "normal" : "arc"),
+                 (unsigned)e.queued, (long)e.stepsX, (long)e.stepsY, (long)e.startX, (long)e.startY,
+                 (long)e.endX, (long)e.endY, (long)e.lastX, (long)e.lastY, (unsigned long)e.entry,
+                 (unsigned long)e.exitSpeed, (unsigned long)e.nominal);
+        out(buf);
+    }
+}
+
 void PlotterStatus(char *buf, size_t len) {
     const char *state = StateName();
     const double x = (double)g_xy.CurrentX() / g_stepsPerPu[0] / HPGL_PU_PER_MM;

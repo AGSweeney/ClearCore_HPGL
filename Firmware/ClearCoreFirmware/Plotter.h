@@ -48,5 +48,8 @@ const char *PlotterFault();
 void PlotterStatus(char *buf, size_t len);
 /* One-line position report for the console telemetry stream ("TEL ..."). */
 void PlotterTelemetry(char *buf, size_t len);
+/* Step-generation diagnostics (console "diag"): large single-sample step requests and
+ * steps carried over the per-sample limit. */
+void PlotterDiag(void (*out)(const char *line));
 
 #endif

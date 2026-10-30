@@ -177,6 +177,9 @@ bool ConsoleHandleLine(const char *lineIn, ConsoleOut out) {
             return false;
         }
         Reply(out, TransportPen(Eq(tok[1], "down")));
+    } else if (Eq(cmd, "diag")) {
+        PlotterDiag(out);
+        out("ok");
     } else if (Eq(cmd, "tel")) {
         if (n < 2) {
             Reply(out, "usage: tel <ms> (0 = off)");

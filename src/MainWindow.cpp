@@ -93,6 +93,13 @@ QString FormatHpglForDisplay(const QByteArray &hpgl, int maxChars) {
     return out;
 }
 
+// setStyleSheet() re-polishes the widget; the status handler runs ~3x/s, so only apply real changes.
+void SetSheet(QWidget *w, const QString &sheet) {
+    if (w->styleSheet() != sheet) {
+        w->setStyleSheet(sheet);
+    }
+}
+
 double ParseDoubleLine(const QLineEdit *e, double defaultValue) {
     if (!e) {
         return defaultValue;
@@ -667,18 +674,18 @@ void MainWindow::UpdateMachineButtons() {
     m_saveDxfGeometryAction->setEnabled(m_source == SourceKind::Dxf && !m_dxfPolylinesMm.isEmpty());
 
     if (!conn || !s.valid) {
-        m_enableButton->setStyleSheet(kIdleButton);
-        m_disableButton->setStyleSheet(kIdleButton);
+        SetSheet(m_enableButton, kIdleButton);
+        SetSheet(m_disableButton, kIdleButton);
     } else if (s.enabled) {
-        m_enableButton->setStyleSheet(kGreenButton);
-        m_disableButton->setStyleSheet(kIdleButton);
+        SetSheet(m_enableButton, kGreenButton);
+        SetSheet(m_disableButton, kIdleButton);
     } else {
-        m_enableButton->setStyleSheet(kIdleButton);
-        m_disableButton->setStyleSheet(kOrangeButton);
+        SetSheet(m_enableButton, kIdleButton);
+        SetSheet(m_disableButton, kOrangeButton);
     }
     m_pauseButton->setText(s.state == QLatin1String("paused") ? "Resume" : "Pause");
     const bool faulted = s.valid && !s.fault.isEmpty() && s.fault != QLatin1String("none");
-    m_clearFaultButton->setStyleSheet(faulted ? kOrangeButton : kIdleButton);
+    SetSheet(m_clearFaultButton, faulted ? kOrangeButton : kIdleButton);
 }
 
 void MainWindow::AppendLog(const QString &line) {
@@ -825,7 +832,7 @@ void MainWindow::OnStatus(const PlotterLink::Status &s) {
         text += QStringLiteral(" · FAULT: %1").arg(s.fault);
     }
     m_stateLabel->setText(text);
-    m_stateLabel->setStyleSheet(faulted || s.estop == QLatin1String("open")
+    SetSheet(m_stateLabel, faulted || s.estop == QLatin1String("open")
                                     ? QStringLiteral("QLabel { color: #ffcdd2; border-color: #c62828; }")
                                     : QString());
     m_positionView3D->setDroOverlayText(QStringLiteral("X  %1 mm\nY  %2 mm\nPen %3")
@@ -846,7 +853,10 @@ void MainWindow::OnStatus(const PlotterLink::Status &s) {
             AppendLog(QStringLiteral("Plot stopped: %1").arg(s.fault));
             statusBar()->showMessage(QStringLiteral("Plot stopped: %1").arg(s.fault));
         } else if (s.state == QLatin1String("idle") && s.queue == 0 &&
-                   (m_jobSawBusy || s.source == QLatin1String("none"))) {
+                   (m_jobSawBusy || QDateTime::currentMSecsSinceEpoch() - m_jobSentMs > 3000)) {
+            /* A small job is "sent" as soon as the OS buffers it, often before the board has
+             * started; an idle sample then is not the end. Require having seen this job busy
+             * (or a few seconds of idle for jobs too short to catch). */
             m_jobAwaitingFinish = false;
             PushProgressToView(true);
             AppendLog("Plot complete");
@@ -1129,7 +1139,7 @@ void MainWindow::UpdatePlotInfo() {
         text += QStringLiteral(" · extends beyond the plot area and will be clipped");
     }
     m_plotInfoLabel->setText(text);
-    m_plotInfoLabel->setStyleSheet(outside ? "QLabel { color: #ffcc80; }" : "");
+    SetSheet(m_plotInfoLabel, outside ? "QLabel { color: #ffcc80; }" : "");
 }
 
 /* ------------------------------------------------------------------------- */
@@ -1173,6 +1183,7 @@ void MainWindow::BuildProgressPlan() {
 }
 
 void MainWindow::ResetProgress() {
+    m_progressShapeShown = -1;
     m_progressSeg = -1;
     m_progressT = 0.f;
     m_progressMs = QDateTime::currentMSecsSinceEpoch();
@@ -1183,7 +1194,9 @@ void MainWindow::ResetProgress() {
 // and only as far as the plotter could have travelled since the last match, so crossings and
 // repeated passes over the same spot do not make progress jump ahead.
 void MainWindow::UpdateProgress(const PlotterLink::Status &s) {
-    if (m_plan.isEmpty() || !s.valid) {
+    if (m_plan.isEmpty() || !s.valid || !s.penDown) {
+        /* Only pen-down samples advance progress. A pen-up sample cannot tell which shape is
+         * next, and matching it to a later pen-up hop jumped progress past shapes not drawn. */
         return;
     }
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
@@ -1197,11 +1210,12 @@ void MainWindow::UpdateProgress(const PlotterLink::Status &s) {
 
     int best = -1;
     float bestT = 0.f;
-    float bestDist = kTolMm;
+    constexpr float kTieMm = 0.05f;  /* overlapping shapes: prefer the earliest */
+    float bestDist = kTolMm + kTieMm;
     for (int i = from; i < m_plan.size() && m_plan[i].cumStart <= reach; i++) {
         const PlanSeg &seg = m_plan[i];
-        if (seg.cut != s.penDown) {
-            continue;  // pen down follows cuts, pen up follows the hops between them
+        if (!seg.cut) {
+            continue;
         }
         const QVector3D ab = seg.b - seg.a;
         const float len2 = ab.lengthSquared();
@@ -1211,7 +1225,7 @@ void MainWindow::UpdateProgress(const PlotterLink::Status &s) {
             t = qMax(t, m_progressT);  // never move backwards within a segment
         }
         const float d = (seg.a + ab * t - p).length();
-        if (d <= bestDist) {
+        if (d + kTieMm < bestDist) {
             bestDist = d;
             best = i;
             bestT = t;
@@ -1227,6 +1241,11 @@ void MainWindow::UpdateProgress(const PlotterLink::Status &s) {
     m_progressSeg = best;
     m_progressT = bestT;
     PushProgressToView();
+    const int shape = m_plan[best].strip;
+    if (shape != m_progressShapeShown) {
+        m_progressShapeShown = shape;
+        statusBar()->showMessage(QStringLiteral("Drawing shape %1 of %2").arg(shape + 1).arg(m_previewStripsMm.size()));
+    }
 }
 
 void MainWindow::PushProgressToView(bool allDone) {
@@ -1346,6 +1365,7 @@ void MainWindow::OnJobProgress(qint64 sent, qint64 total) {
 }
 
 void MainWindow::OnJobSent() {
+    m_jobSentMs = QDateTime::currentMSecsSinceEpoch();
     m_jobSending = false;
     m_jobAwaitingFinish = true;
     m_progress->setValue(100);

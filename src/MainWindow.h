@@ -188,4 +188,6 @@ private:
     bool m_jobSending = false;
     bool m_jobAwaitingFinish = false;
     bool m_jobSawBusy = false;
+    qint64 m_jobSentMs = 0;
+    int m_progressShapeShown = -1;
 };

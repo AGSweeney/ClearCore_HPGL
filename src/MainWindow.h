@@ -78,6 +78,10 @@ private:
     QVector3D DxfPlacementOffset() const;
     void RebuildPreview();
     void UpdatePlotInfo();
+    void BuildProgressPlan();
+    void ResetProgress();
+    void UpdateProgress(const PlotterLink::Status &status);
+    void PushProgressToView(bool allDone = false);
     void ApplyDeviceConfig(const QStringList &lines);
     void ShowSettingsDialog(const QStringList &configLines);
     void PromptSaveDxfAfterGeometryFix();
@@ -163,6 +167,21 @@ private:
     double m_plotHeightMm = 300.0;
     bool m_settingsDialogPending = false;
     QSet<QString> m_discoverySeen;
+
+    // Plot progress: the planned path as ordered segments (cuts, plus the pen-up hop to each
+    // strip start), and how far along it the reported pen position has been matched.
+    struct PlanSeg {
+        QVector3D a;
+        QVector3D b;
+        int strip = -1;   // cut strip index; for a pen-up hop, the strip it leads to
+        int vertex = 0;   // cut: index of a within the strip
+        bool cut = false;
+        double cumStart = 0.0;
+    };
+    QVector<PlanSeg> m_plan;
+    int m_progressSeg = -1;
+    float m_progressT = 0.f;
+    qint64 m_progressMs = 0;
 
     // Job
     bool m_jobSending = false;

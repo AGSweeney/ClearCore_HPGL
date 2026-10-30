@@ -32,6 +32,8 @@ public:
                              const QVector<QVector3D> &rapidSegments);
     /// Red crosshairs when path trace is on; hover for laser-oriented explanation per issue.
     void setPathIssues(const QVector<PathIssueMarker> &markers);
+    /// Part of the cut path already drawn (plot progress), drawn green over the yellow plan.
+    void setProgramProgress(const QVector<QVector<QVector3D>> &doneStrips);
     // Legacy single-path overload kept for backward compatibility.
     void setProgramPath(const QVector<QVector3D> &points);
     void setPathTraceEnabled(bool on);
@@ -84,6 +86,7 @@ private:
     QVector<QVector3D> m_programPath;            // legacy flat path
     QVector<QVector<QVector3D>> m_cutStrips;     // one polyline per consecutive cut run
     QVector<QVector3D> m_rapidSegments;          // flat start/end pairs for G0 moves
+    QVector<QVector<QVector3D>> m_doneStrips;    // plot progress (subset of the cut path)
     QVector<PathIssueMarker> m_pathIssues;
     int m_hoverPathIssueIndex = -1;
     QString m_droOverlayText;

@@ -91,3 +91,9 @@ if (CLEARHPGL_BUILD_TESTS)
     target_link_libraries(render_settings_dialog PRIVATE Qt6::OpenGLWidgets Qt6::OpenGL Qt6::Widgets Qt6::Svg
                           Qt6::SerialPort Qt6::Network)
 endif()
+if (CLEARHPGL_BUILD_TESTS)
+    # dxf_probe <file.dxf>: strips, vertices, extent and drawn length from the app's importer
+    qt_add_executable(dxf_probe tests/dxf_probe.cpp src/DxfImport.cpp src/DxfImport.h)
+    target_include_directories(dxf_probe PRIVATE src)
+    target_link_libraries(dxf_probe PRIVATE Qt6::Core Qt6::Gui)
+endif()

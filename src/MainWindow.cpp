@@ -825,6 +825,9 @@ void MainWindow::OnStatus(const PlotterLink::Status &s) {
                                             .arg(s.penDown ? "down" : "up"));
     m_positionView3D->setToolPosition(float(s.xMm), float(s.yMm), s.penDown ? 0.f : kPenUpVizZ);
 
+    if (m_jobSending || m_jobAwaitingFinish) {
+        UpdateProgress(s);
+    }
     if (m_jobAwaitingFinish) {
         if (s.state == QLatin1String("plotting") || s.state == QLatin1String("paused") || s.queue > 0) {
             m_jobSawBusy = true;
@@ -836,6 +839,7 @@ void MainWindow::OnStatus(const PlotterLink::Status &s) {
         } else if (s.state == QLatin1String("idle") && s.queue == 0 &&
                    (m_jobSawBusy || s.source == QLatin1String("none"))) {
             m_jobAwaitingFinish = false;
+            PushProgressToView(true);
             AppendLog("Plot complete");
             statusBar()->showMessage("Plot complete");
         }
@@ -1061,6 +1065,7 @@ void MainWindow::RebuildPreview() {
     }
     m_positionView3D->setProgramPathSplit(m_previewStripsMm, m_previewRapidsMm);
     m_positionView3D->setPathIssues(markers);
+    BuildProgressPlan();
     m_pathCheck->setEnabled(m_source != SourceKind::None);
     UpdatePlotInfo();
     if (!extra.isEmpty()) {
@@ -1112,6 +1117,119 @@ void MainWindow::UpdatePlotInfo() {
     m_plotInfoLabel->setStyleSheet(outside ? "QLabel { color: #ffcc80; }" : "");
 }
 
+/* ------------------------------------------------------------------------- */
+/* Plot progress                                                              */
+/* ------------------------------------------------------------------------- */
+
+void MainWindow::BuildProgressPlan() {
+    m_plan.clear();
+    double cum = 0.0;
+    bool havePrev = false;
+    QVector3D prevEnd;
+    for (int s = 0; s < m_previewStripsMm.size(); s++) {
+        const QVector<QVector3D> &strip = m_previewStripsMm[s];
+        if (strip.size() < 2) {
+            continue;
+        }
+        if (havePrev) {
+            PlanSeg hop;
+            hop.a = prevEnd;
+            hop.b = strip.first();
+            hop.strip = s;
+            hop.cumStart = cum;
+            m_plan.append(hop);
+            cum += double((hop.b - hop.a).length());
+        }
+        for (int i = 0; i + 1 < strip.size(); i++) {
+            PlanSeg seg;
+            seg.a = strip[i];
+            seg.b = strip[i + 1];
+            seg.strip = s;
+            seg.vertex = i;
+            seg.cut = true;
+            seg.cumStart = cum;
+            m_plan.append(seg);
+            cum += double((seg.b - seg.a).length());
+        }
+        prevEnd = strip.last();
+        havePrev = true;
+    }
+    ResetProgress();
+}
+
+void MainWindow::ResetProgress() {
+    m_progressSeg = -1;
+    m_progressT = 0.f;
+    m_progressMs = QDateTime::currentMSecsSinceEpoch();
+    m_positionView3D->setProgramProgress({});
+}
+
+// Match the reported pen position to the plan, searching forward only (plotting is sequential)
+// and only as far as the plotter could have travelled since the last match, so crossings and
+// repeated passes over the same spot do not make progress jump ahead.
+void MainWindow::UpdateProgress(const PlotterLink::Status &s) {
+    if (m_plan.isEmpty() || !s.valid) {
+        return;
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const double dt = qMax<qint64>(now - m_progressMs, 100) / 1000.0;
+    const double vMax = qMax(m_deviceConfig.value("max_mm_s", "250").toDouble(),
+                             m_deviceConfig.value("travel_mm_s", "200").toDouble());
+    const int from = qMax(0, m_progressSeg);
+    const double reach = (m_progressSeg < 0 ? 0.0 : m_plan[from].cumStart) + vMax * dt * 2.0 + 20.0;
+    const QVector3D p(float(s.xMm), float(s.yMm), 0.f);
+    constexpr float kTolMm = 1.0f;
+
+    int best = -1;
+    float bestT = 0.f;
+    float bestDist = kTolMm;
+    for (int i = from; i < m_plan.size() && m_plan[i].cumStart <= reach; i++) {
+        const PlanSeg &seg = m_plan[i];
+        if (seg.cut != s.penDown) {
+            continue;  // pen down follows cuts, pen up follows the hops between them
+        }
+        const QVector3D ab = seg.b - seg.a;
+        const float len2 = ab.lengthSquared();
+        float t = len2 > 1e-12f ? QVector3D::dotProduct(p - seg.a, ab) / len2 : 0.f;
+        t = qBound(0.f, t, 1.f);
+        if (i == m_progressSeg) {
+            t = qMax(t, m_progressT);  // never move backwards within a segment
+        }
+        const float d = (seg.a + ab * t - p).length();
+        if (d <= bestDist) {
+            bestDist = d;
+            best = i;
+            bestT = t;
+        }
+    }
+    m_progressMs = now;
+    if (best < 0 || (best == m_progressSeg && bestT <= m_progressT)) {
+        return;
+    }
+    m_progressSeg = best;
+    m_progressT = bestT;
+    PushProgressToView();
+}
+
+void MainWindow::PushProgressToView(bool allDone) {
+    QVector<QVector<QVector3D>> done;
+    if (allDone) {
+        done = m_previewStripsMm;
+    } else if (m_progressSeg >= 0 && m_progressSeg < m_plan.size()) {
+        const PlanSeg &cur = m_plan[m_progressSeg];
+        for (int s = 0; s < cur.strip && s < m_previewStripsMm.size(); s++) {
+            done.append(m_previewStripsMm[s]);
+        }
+        if (cur.cut) {
+            const QVector<QVector3D> &strip = m_previewStripsMm[cur.strip];
+            QVector<QVector3D> part = strip.mid(0, cur.vertex + 1);
+            part.append(cur.a + (cur.b - cur.a) * m_progressT);
+            done.append(part);
+        }
+    }
+    m_positionView3D->setProgramProgress(done);
+}
+
 void MainWindow::ExportHpgl() {
     if (m_source == SourceKind::None) {
         return;
@@ -1148,11 +1266,42 @@ void MainWindow::StartPlot() {
                              "if no estop is wired.");
         return;
     }
+    if (m_source == SourceKind::Dxf) {
+        int partly = 0;
+        int entirely = 0;
+        for (const auto &strip : m_previewStripsMm) {
+            int outside = 0;
+            for (const QVector3D &p : strip) {
+                if (p.x() < -0.01f || p.y() < -0.01f || p.x() > m_plotWidthMm + 0.01 || p.y() > m_plotHeightMm + 0.01) {
+                    outside++;
+                }
+            }
+            if (outside == strip.size()) {
+                entirely++;
+            } else if (outside > 0) {
+                partly++;
+            }
+        }
+        if (entirely + partly > 0) {
+            const auto r = QMessageBox::question(
+                this, "Plot",
+                QStringLiteral("The drawing does not fit the %1 x %2 mm plot area: %3 shape(s) lie entirely outside "
+                               "and will not be drawn, %4 will be cut off at the edge.\n\nPlot anyway?")
+                    .arg(m_plotWidthMm)
+                    .arg(m_plotHeightMm)
+                    .arg(entirely)
+                    .arg(partly));
+            if (r != QMessageBox::Yes) {
+                return;
+            }
+        }
+    }
     QString err;
     if (!m_link.startJob(job, &err)) {
         QMessageBox::warning(this, "Plot", err);
         return;
     }
+    ResetProgress();
     m_jobSending = true;
     m_jobAwaitingFinish = false;
     m_jobSawBusy = false;

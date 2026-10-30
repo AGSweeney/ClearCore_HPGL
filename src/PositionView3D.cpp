@@ -746,9 +746,10 @@ void PositionView3D::mouseMoveEvent(QMouseEvent *event) {
     }
 
     if (m_leftDragOrbitEnabled && (buttons & Qt::LeftButton) != 0) {
-        m_azDeg += float(d.x()) * 0.4f;
+        // Grab-and-turn: the drawing follows the mouse, so the camera moves the opposite way.
+        m_azDeg -= float(d.x()) * 0.4f;
         if (!m_topDownLocked) {
-            m_elDeg -= float(d.y()) * 0.4f;
+            m_elDeg += float(d.y()) * 0.4f;
         }
         update();
     }

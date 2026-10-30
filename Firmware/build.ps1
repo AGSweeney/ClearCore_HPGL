@@ -12,7 +12,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Command-line build of the Atmel Studio generated Makefiles (same output as building
-# Firmware/ClearCoreFirmware/ClearCNC_Firmware.atsln in Microchip/Atmel Studio).
+# Firmware/ClearCoreFirmware/ClearHPGL_Firmware.atsln in Microchip/Atmel Studio).
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Projects = @(
     (Join-Path $RepoRoot "LwIP"),
@@ -74,8 +74,8 @@ foreach ($project in $Projects) {
 }
 
 $fwDir = Join-Path $PSScriptRoot "ClearCoreFirmware\$Config"
-$bin = Join-Path $fwDir "ClearCNC_Firmware.bin"
-$uf2 = Join-Path $fwDir "ClearCNC_Firmware.uf2"
+$bin = Join-Path $fwDir "ClearHPGL_Firmware.bin"
+$uf2 = Join-Path $fwDir "ClearHPGL_Firmware.uf2"
 & (Join-Path $RepoRoot "tools\uf2-builder\Release\uf2-builder.exe") $bin $uf2
 if ($LASTEXITCODE -ne 0) {
     throw "uf2-builder failed with exit code $LASTEXITCODE."

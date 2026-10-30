@@ -12,9 +12,9 @@
     <OutputFileName>$(MSBuildProjectName)</OutputFileName>
     <OutputFileExtension>.elf</OutputFileExtension>
     <OutputDirectory>$(MSBuildProjectDirectory)\$(Configuration)</OutputDirectory>
-    <AssemblyName>ClearCNC_Firmware</AssemblyName>
-    <Name>ClearCNC_Firmware</Name>
-    <RootNamespace>ClearCNC_Firmware</RootNamespace>
+    <AssemblyName>ClearHPGL_Firmware</AssemblyName>
+    <Name>ClearHPGL_Firmware</Name>
+    <RootNamespace>ClearHPGL_Firmware</RootNamespace>
     <ToolchainFlavour>Native</ToolchainFlavour>
     <KeepTimersRunning>true</KeepTimersRunning>
     <OverrideVtor>false</OverrideVtor>
@@ -262,7 +262,46 @@
     <Compile Include="Device_Startup\startup_same53.c">
       <SubType>compile</SubType>
     </Compile>
-    <Compile Include="ClearCNC_Firmware.cpp">
+    <Compile Include="ClearHPGL_Firmware.cpp">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="Console.cpp">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="Console.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="Hpgl.cpp">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="Hpgl.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="HpglChannel.cpp">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="HpglChannel.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="Plotter.cpp">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="Plotter.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="PlotterConfig.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="Settings.cpp">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="Settings.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="Transport.cpp">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="Transport.h">
       <SubType>compile</SubType>
     </Compile>
     <None Include="Device_Startup\flash_without_bootloader.ld">

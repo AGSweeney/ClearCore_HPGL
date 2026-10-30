@@ -33,3 +33,6 @@ __pycache__/
 !/LwIP/Debug/makedep.mk
 !/LwIP/Release/Makefile
 !/LwIP/Release/makedep.mk
+
+# Host test build
+/Firmware/tests/build/

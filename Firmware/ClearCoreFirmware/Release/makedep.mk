@@ -4,5 +4,17 @@
 
 Device_Startup\startup_same53.c
 
-ClearCNC_Firmware.cpp
+ClearHPGL_Firmware.cpp
+
+Console.cpp
+
+Hpgl.cpp
+
+HpglChannel.cpp
+
+Plotter.cpp
+
+Settings.cpp
+
+Transport.cpp
 

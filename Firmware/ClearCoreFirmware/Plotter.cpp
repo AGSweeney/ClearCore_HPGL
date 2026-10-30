@@ -613,19 +613,28 @@ void PlotterPoll() {
     }
 }
 
-void PlotterStatus(char *buf, size_t len) {
-    const char *state;
+static const char *StateName() {
     if (g_fault) {
-        state = "fault";
-    } else if (!g_enabled) {
-        state = (g_count > 0) ? "waiting_enable" : "disabled";
-    } else if (g_paused) {
-        state = "paused";
-    } else if (PlotterIdle()) {
-        state = "idle";
-    } else {
-        state = "plotting";
+        return "fault";
     }
+    if (!g_enabled) {
+        return (g_count > 0) ? "waiting_enable" : "disabled";
+    }
+    if (g_paused) {
+        return "paused";
+    }
+    return PlotterIdle() ? "idle" : "plotting";
+}
+
+void PlotterTelemetry(char *buf, size_t len) {
+    const double x = (double)g_xy.CurrentX() / g_stepsPerPu[0] / HPGL_PU_PER_MM;
+    const double y = (double)g_xy.CurrentY() / g_stepsPerPu[1] / HPGL_PU_PER_MM;
+    snprintf(buf, len, "TEL ms=%lu x=%.3f y=%.3f pen=%d state=%s queue=%u", (unsigned long)Milliseconds(), x, y,
+             g_physPenDown ? 1 : 0, StateName(), (unsigned)g_count);
+}
+
+void PlotterStatus(char *buf, size_t len) {
+    const char *state = StateName();
     const double x = (double)g_xy.CurrentX() / g_stepsPerPu[0] / HPGL_PU_PER_MM;
     const double y = (double)g_xy.CurrentY() / g_stepsPerPu[1] / HPGL_PU_PER_MM;
     snprintf(buf, len,

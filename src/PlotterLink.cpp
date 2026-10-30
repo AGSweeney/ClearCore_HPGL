@@ -7,6 +7,9 @@
 
 namespace {
 constexpr int kEthernetPollMs = 300;
+// Position telemetry period requested from the board ("tel <ms>"); the 300 ms status poll
+// alone moved the pen marker and progress only ~3 times a second.
+constexpr int kTelemetryMs = 25;
 constexpr int kSerialPollMs = 1000;
 constexpr int kCommandTimeoutMs = 4000;
 constexpr qint64 kJobChunk = 4096;
@@ -63,6 +66,7 @@ bool PlotterLink::connectEthernet(const QString &host, QString *error) {
     m_status = Status();
     m_pollTimer.start(kEthernetPollMs);
     sendCommand(QStringLiteral("status"));
+    sendCommand(QStringLiteral("tel %1").arg(kTelemetryMs));  /* older firmware: harmless error */
     return true;
 }
 
@@ -275,6 +279,10 @@ void PlotterLink::onConsoleReadyRead() {
 }
 
 void PlotterLink::handleConsoleLine(const QString &line) {
+    if (line.startsWith(QLatin1String("TEL "))) {
+        parseTelemetryLine(line);  /* pushed by the board; may arrive inside a command reply */
+        return;
+    }
     if (line.contains(QLatin1String("state=")) || line.contains(QLatin1String("source="))) {
         parseStatusLine(line);
     }
@@ -318,6 +326,23 @@ static QString TokenValue(const QString &line, const QString &key) {
         at += k.size();
     }
     return QString();
+}
+
+void PlotterLink::parseTelemetryLine(const QString &line) {
+    bool okX = false;
+    bool okY = false;
+    const double x = TokenValue(line, QStringLiteral("x")).toDouble(&okX);
+    const double y = TokenValue(line, QStringLiteral("y")).toDouble(&okY);
+    if (!okX || !okY) {
+        return;
+    }
+    m_status.xMm = x;
+    m_status.yMm = y;
+    m_status.penDown = TokenValue(line, QStringLiteral("pen")) == QLatin1String("1");
+    m_status.state = TokenValue(line, QStringLiteral("state"));
+    m_status.queue = TokenValue(line, QStringLiteral("queue")).toInt();
+    m_status.valid = true;
+    emit telemetryUpdated(m_status);
 }
 
 void PlotterLink::parseStatusLine(const QString &line) {

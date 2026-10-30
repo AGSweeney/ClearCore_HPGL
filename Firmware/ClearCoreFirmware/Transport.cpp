@@ -53,6 +53,9 @@ static bool g_consoleConnected = false;
 static uint32_t g_tcpJobs = 0;
 static uint32_t g_tcpRead = 0;
 static char g_consoleLine[CHPGL_MAX_LINE];
+/* "tel <ms>" on the TCP console: push a TEL line every period (0 = off). */
+static uint32_t g_telPeriodMs = 0;
+static uint32_t g_telLastMs = 0;
 static uint16_t g_consoleLen = 0;
 
 /* USB console and the "menu" escape. */
@@ -355,11 +358,40 @@ static void ConsoleTcpOut(const char *line) {
     }
 }
 
+static void PollTelemetry() {
+    if (!g_consoleConnected || g_telPeriodMs == 0) {
+        return;
+    }
+    const uint32_t now = Milliseconds();
+    if (now - g_telLastMs < g_telPeriodMs) {
+        return;
+    }
+    /* Only send when it fits: a PC that stops reading must never stall the motion loop. */
+    volatile const EthernetTcp::TcpData *st = g_consoleClient.ConnectionState();
+    if (st == nullptr || st->pcb == nullptr || tcp_sndbuf(st->pcb) < 128) {
+        return;
+    }
+    g_telLastMs = now;
+    char line[96];
+    PlotterTelemetry(line, sizeof(line));
+    ConsoleTcpOut(line);
+}
+
+const char *TransportSetTelemetry(void (*out)(const char *), uint32_t periodMs) {
+    if (out != ConsoleTcpOut) {
+        return "telemetry is available on the TCP console (9300) only";
+    }
+    g_telPeriodMs = (periodMs == 0) ? 0 : (periodMs < 10 ? 10 : periodMs);
+    g_telLastMs = 0;
+    return nullptr;
+}
+
 static void PollTcpConsole() {
     if (!g_consoleConnected || !g_consoleClient.Connected()) {
         if (g_consoleConnected) {
             g_consoleClient.Close();
             g_consoleConnected = false;
+            g_telPeriodMs = 0;  /* a new client starts without telemetry */
         }
         EthernetTcpClient next = g_consoleServer.Accept();
         if (!next.Connected()) {
@@ -547,6 +579,7 @@ void TransportPoll() {
         EthernetMgr.Refresh();
         PollTcpHpgl();
         PollTcpConsole();
+        PollTelemetry();
         PollDiscovery();
     }
     HandleAborts();

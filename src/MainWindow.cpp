@@ -136,6 +136,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     SetConnectedUi(false);
 
     connect(&m_link, &PlotterLink::statusUpdated, this, &MainWindow::OnStatus);
+    connect(&m_link, &PlotterLink::telemetryUpdated, this, &MainWindow::OnTelemetry);
     connect(&m_link, &PlotterLink::commandFinished, this, &MainWindow::OnCommandFinished);
     connect(&m_link, &PlotterLink::jobProgress, this, &MainWindow::OnJobProgress);
     connect(&m_link, &PlotterLink::jobSent, this, &MainWindow::OnJobSent);
@@ -835,11 +836,7 @@ void MainWindow::OnStatus(const PlotterLink::Status &s) {
     SetSheet(m_stateLabel, faulted || s.estop == QLatin1String("open")
                                     ? QStringLiteral("QLabel { color: #ffcdd2; border-color: #c62828; }")
                                     : QString());
-    m_positionView3D->setDroOverlayText(QStringLiteral("X  %1 mm\nY  %2 mm\nPen %3")
-                                            .arg(s.xMm, 0, 'f', 3)
-                                            .arg(s.yMm, 0, 'f', 3)
-                                            .arg(s.penDown ? "down" : "up"));
-    m_positionView3D->setToolPosition(float(s.xMm), float(s.yMm), s.penDown ? 0.f : kPenUpVizZ);
+    UpdatePenView(s);
 
     if (m_jobSending || m_jobAwaitingFinish) {
         UpdateProgress(s);
@@ -866,9 +863,26 @@ void MainWindow::OnStatus(const PlotterLink::Status &s) {
     UpdateMachineButtons();
 }
 
+void MainWindow::UpdatePenView(const PlotterLink::Status &s) {
+    m_positionView3D->setDroOverlayText(QStringLiteral("X  %1 mm\nY  %2 mm\nPen %3")
+                                            .arg(s.xMm, 0, 'f', 3)
+                                            .arg(s.yMm, 0, 'f', 3)
+                                            .arg(s.penDown ? "down" : "up"));
+    m_positionView3D->setToolPosition(float(s.xMm), float(s.yMm), s.penDown ? 0.f : kPenUpVizZ);
+}
+
+// Fast path (~40/s): pen marker, readout and progress only. Buttons, faults and job
+// completion stay on the full status poll.
+void MainWindow::OnTelemetry(const PlotterLink::Status &s) {
+    UpdatePenView(s);
+    if (m_jobSending || m_jobAwaitingFinish) {
+        UpdateProgress(s);
+    }
+}
+
 void MainWindow::OnCommandFinished(const QString &command, bool ok, const QStringList &lines) {
-    if (command == QLatin1String("status")) {
-        return;
+    if (command == QLatin1String("status") || command.startsWith(QLatin1String("tel "))) {
+        return;  /* background poll / optional telemetry (older firmware rejects it quietly) */
     }
     if (command == QLatin1String("config")) {
         if (ok) {

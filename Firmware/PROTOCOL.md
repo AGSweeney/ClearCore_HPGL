@@ -142,6 +142,7 @@ Every command ends with a line starting `ok` or `error:`.
 | `goto <x_mm> <y_mm>` | pen-up move (no job running) |
 | `pen up` / `pen down` | pen test (no job running) |
 | `clear` | clear a latched fault |
+| `tel <ms>` | TCP console only: push `TEL ms= x= y= pen= state= queue=` every `<ms>` (min 10, `0` off). Sent only when the TCP send buffer has room, so a slow client cannot stall motion. The app uses 25 ms. |
 | `restart` | reboot |
 | `version`, `help`, `exit` | |
 

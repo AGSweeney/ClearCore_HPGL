@@ -42,5 +42,8 @@ const char *TransportIpString();
 void TransportRestart();
 
 void TransportUsbSendLine(const char *line);
+/* Console "tel <ms>": push TEL position lines every periodMs on the session that asked
+ * (TCP console only; 0 stops). Returns nullptr or an error message. */
+const char *TransportSetTelemetry(void (*out)(const char *), uint32_t periodMs);
 
 #endif

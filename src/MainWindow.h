@@ -56,6 +56,7 @@ private slots:
     void OnPathIssueQuickFixMergeAcrossRapid(int rapidPairIndex);
 
     void OnStatus(const PlotterLink::Status &status);
+    void OnTelemetry(const PlotterLink::Status &status);
     void OnCommandFinished(const QString &command, bool ok, const QStringList &lines);
     void OnJobProgress(qint64 sent, qint64 total);
     void OnJobSent();
@@ -68,6 +69,7 @@ private:
     void BuildUi();
     void SetConnectedUi(bool connected);
     void UpdateMachineButtons();
+    void UpdatePenView(const PlotterLink::Status &status);
     void AppendLog(const QString &line);
     void Command(const QString &line);
 

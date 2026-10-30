@@ -46,5 +46,7 @@ void PlotterClearFault();
 const char *PlotterFault();
 
 void PlotterStatus(char *buf, size_t len);
+/* One-line position report for the console telemetry stream ("TEL ..."). */
+void PlotterTelemetry(char *buf, size_t len);
 
 #endif

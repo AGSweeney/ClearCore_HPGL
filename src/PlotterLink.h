@@ -70,6 +70,8 @@ public:
 signals:
     void deviceDiscovered(const QString &host, const QString &info);
     void statusUpdated(const PlotterLink::Status &status);
+    // Fast position stream (TEL lines, ~40/s over Ethernet): position, pen, state, queue only.
+    void telemetryUpdated(const PlotterLink::Status &status);
     void commandFinished(const QString &command, bool ok, const QStringList &lines);
     void jobProgress(qint64 sent, qint64 total);
     void jobSent();
@@ -94,6 +96,7 @@ private:
     void handleConsoleLine(const QString &line);
     void finishCommand(bool ok);
     void parseStatusLine(const QString &line);
+    void parseTelemetryLine(const QString &line);
     void parseSerialReply(const QString &line);
     void sendDiscoveryRound(const QStringList &directHosts, bool log);
     void writeJobChunk();

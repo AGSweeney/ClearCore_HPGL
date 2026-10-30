@@ -23,6 +23,7 @@ static const char *const kHelp[] = {
     "  goto <x_mm> <y_mm>   pen-up move (no job running)",
     "  pen up | pen down    pen test (no job running)",
     "  clear                clear a latched fault",
+    "  tel <ms>             TCP console: push 'TEL x= y= pen= state= queue=' every <ms> (0 = off)",
     "  restart              reboot (network and COM settings apply)",
     "  version",
     "  exit                 leave the console",
@@ -176,6 +177,12 @@ bool ConsoleHandleLine(const char *lineIn, ConsoleOut out) {
             return false;
         }
         Reply(out, TransportPen(Eq(tok[1], "down")));
+    } else if (Eq(cmd, "tel")) {
+        if (n < 2) {
+            Reply(out, "usage: tel <ms> (0 = off)");
+            return false;
+        }
+        Reply(out, TransportSetTelemetry(out, (uint32_t)atoi(tok[1])));
     } else if (Eq(cmd, "clear")) {
         PlotterClearFault();
         Reply(out, nullptr);

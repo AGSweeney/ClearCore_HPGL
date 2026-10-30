@@ -58,6 +58,40 @@ QSettings AppSettings() {
     return QSettings("ClearHPGL", "ClearHPGL");
 }
 
+// Display only: one instruction per line (drivers such as AutoCAD's write the whole job
+// without line breaks) and visible control characters. The job itself is sent unchanged.
+QString FormatHpglForDisplay(const QByteArray &hpgl, int maxChars) {
+    QString out;
+    out.reserve(qMin(int(hpgl.size() + hpgl.size() / 8), maxChars + 64));
+    for (int i = 0; i < hpgl.size(); i++) {
+        if (out.size() >= maxChars) {
+            out += QStringLiteral("\n... (%1 more bytes not shown)").arg(hpgl.size() - i);
+            break;
+        }
+        const uchar c = uchar(hpgl.at(i));
+        if (c == ';') {
+            out += QLatin1Char(';');
+            const uchar next = (i + 1 < hpgl.size()) ? uchar(hpgl.at(i + 1)) : 0;
+            if (next != '\r' && next != '\n') {
+                out += QLatin1Char('\n');
+            }
+        } else if (c == '\r') {
+            if (i + 1 >= hpgl.size() || hpgl.at(i + 1) != '\n') {
+                out += QLatin1Char('\n');
+            }
+        } else if (c == '\n' || c == '\t' || c >= 0x20) {
+            out += QChar(c);
+        } else if (c == 0x1b) {
+            out += QStringLiteral("<ESC>");
+        } else if (c == 0x03) {
+            out += QStringLiteral("<ETX>");
+        } else {
+            out += QStringLiteral("<%1>").arg(c, 2, 16, QLatin1Char('0'));
+        }
+    }
+    return out;
+}
+
 double ParseDoubleLine(const QLineEdit *e, double defaultValue) {
     if (!e) {
         return defaultValue;
@@ -565,7 +599,7 @@ void MainWindow::BuildUi() {
     connect(m_placeAtOriginCheck, &QCheckBox::toggled, this, [this](bool on) {
         AppSettings().setValue("plot/placeAtOrigin", on);
         if (m_source == SourceKind::Dxf) {
-            m_preview->setPlainText(QString::fromLatin1(JobHpgl().left(kMaxPreviewChars)));
+            m_preview->setPlainText(FormatHpglForDisplay(JobHpgl(), kMaxPreviewChars));
             RebuildPreview();
         }
     });
@@ -956,7 +990,7 @@ void MainWindow::LoadDxf(const QString &path) {
     m_dxfDrawingToMmScale = imported.drawingToMmScale;
     m_dxfPolylinesMm = std::move(imported.polylinesMm);
     m_dxfRapidSegmentsMm = std::move(imported.rapidSegmentsMm);
-    m_preview->setPlainText(QString::fromLatin1(JobHpgl().left(kMaxPreviewChars)));
+    m_preview->setPlainText(FormatHpglForDisplay(JobHpgl(), kMaxPreviewChars));
     AppendLog(QStringLiteral("Loaded DXF: %1 (%2 polylines)").arg(path).arg(m_dxfPolylinesMm.size()));
     RebuildPreview();
 }
@@ -972,11 +1006,7 @@ void MainWindow::LoadHpgl(const QString &path) {
     m_hpglFile = f.readAll();
     m_dxfPolylinesMm.clear();
     m_dxfRapidSegmentsMm.clear();
-    QString shown = QString::fromLatin1(m_hpglFile.left(kMaxPreviewChars));
-    if (m_hpglFile.size() > kMaxPreviewChars) {
-        shown += QStringLiteral("\n... (%1 more bytes not shown)").arg(m_hpglFile.size() - kMaxPreviewChars);
-    }
-    m_preview->setPlainText(shown);
+    m_preview->setPlainText(FormatHpglForDisplay(m_hpglFile, kMaxPreviewChars));
     AppendLog(QStringLiteral("Loaded HP-GL: %1 (%2 bytes)").arg(path).arg(m_hpglFile.size()));
     RebuildPreview();
 }
@@ -1222,7 +1252,7 @@ void MainWindow::OnPathIssueQuickFixCloseContour(int stripIndex) {
         }
     }
     strip.append(startP);
-    m_preview->setPlainText(QString::fromLatin1(JobHpgl().left(kMaxPreviewChars)));
+    m_preview->setPlainText(FormatHpglForDisplay(JobHpgl(), kMaxPreviewChars));
     AppendLog(QStringLiteral("DXF quick fix: closed strip %1 with a tangent bridge to its start.").arg(stripIndex));
     RebuildPreview();
     PromptSaveDxfAfterGeometryFix();
@@ -1264,7 +1294,7 @@ void MainWindow::OnPathIssueQuickFixMergeAcrossRapid(int rapidPairIndex) {
     m_dxfPolylinesMm[rapidPairIndex] = a;
     m_dxfPolylinesMm.removeAt(rapidPairIndex + 1);
     m_dxfRapidSegmentsMm.remove(flatIdx, 2);
-    m_preview->setPlainText(QString::fromLatin1(JobHpgl().left(kMaxPreviewChars)));
+    m_preview->setPlainText(FormatHpglForDisplay(JobHpgl(), kMaxPreviewChars));
     AppendLog(QStringLiteral("DXF quick fix: merged strips %1 and %2 across a pen-up move.")
                   .arg(rapidPairIndex)
                   .arg(rapidPairIndex + 1));

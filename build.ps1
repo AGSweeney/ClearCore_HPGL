@@ -193,7 +193,9 @@ if (-not $SkipDeploy) {
     $appExe = Resolve-ClearHPGLExe -ResolvedBuildDir $ResolvedBuildDir -BuildConfiguration $Config
     Write-Host "Deploying Qt runtime dependencies to: $(Split-Path -Parent $appExe)"
     $deployMode = if ($Config -eq "Debug") { "--debug" } else { "--release" }
-    & $WinDeployQtExe $deployMode --force --compiler-runtime $appExe
+    # Run inside the VS dev shell so VCINSTALLDIR is set; otherwise --compiler-runtime
+    # silently skips the MSVC runtime DLLs and the app only runs where VC++ is installed.
+    cmd.exe /d /s /c "call `"$VsDevCmd`" -arch=x64 -host_arch=x64 >nul && `"$WinDeployQtExe`" $deployMode --force --compiler-runtime `"$appExe`""
     if ($LASTEXITCODE -ne 0) {
         throw "windeployqt failed with exit code $LASTEXITCODE."
     }

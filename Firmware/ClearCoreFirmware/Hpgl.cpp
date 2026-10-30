@@ -16,6 +16,9 @@ static const double kEps = 1e-6;
 static const char kEtx = 0x03;
 static const double kDefaultChordDeg = 5.0;
 static const double kMinChordDeg = 0.5;
+/* Chords shorter than this (0.2 mm) only add tiny planner segments; on a 1 mm circle the
+ * shape error at this length is under 0.01 mm. */
+static const double kMinChordPu = 8.0;
 
 static bool IsLetter(uint8_t c) {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
@@ -513,6 +516,18 @@ bool HpglInterpreter::StepArc(Op &op) {
             chord = ChordDegrees(chord);
         } else {
             chord = ChordDegrees(op.b);
+        }
+        const Pt cPu = UserToPu(op.x, op.y);
+        const Pt sPu = UserToPu(start.x, start.y);
+        const double rPu = sqrt((sPu.x - cPu.x) * (sPu.x - cPu.x) + (sPu.y - cPu.y) * (sPu.y - cPu.y));
+        if (rPu > kEps) {
+            double minDeg = (kMinChordPu / rPu) * 180.0 / M_PI;
+            if (minDeg > 90.0) {
+                minDeg = 90.0;  /* keep at least a square for very small circles */
+            }
+            if (chord < minDeg) {
+                chord = minDeg;
+            }
         }
         m_arcSteps = (uint32_t)ceil(fabs(op.a) / chord - 1e-9);
         if (m_arcSteps < 1) m_arcSteps = 1;

@@ -205,6 +205,19 @@ static void TestCircle() {
     CHECK(f.sink.events.size() == 1 + 1 + 4 + 1 + 1);
 }
 
+static void TestSmallCircleMinChord() {
+    printf("small circles: chords no shorter than 0.2 mm\n");
+    Fixture f;
+    FeedAll(f.h, "PU1000,1000;CI40;");  /* r = 1 mm: 8 PU chords -> 11.46 deg -> 32 chords */
+    CHECK(f.sink.events.size() == 1 + 1 + 1 + 32 + 1 + 1);
+    f.sink.Clear();
+    FeedAll(f.h, "CI2;");  /* r = 0.05 mm: limited to a square */
+    CHECK(f.sink.events.size() == 1 + 1 + 4 + 1 + 1);
+    f.sink.Clear();
+    FeedAll(f.h, "IP0,0,16000,12000;SC0,1600,0,1200;CI1;SC;");  /* r = 1 user unit = 10 PU, scaled */
+    CHECK(f.sink.events.size() == 1 + 1 + 8 + 1 + 1);  /* no PU move first: start, D, 8 chords, U, back */
+}
+
 static void TestArcs() {
     printf("AA / AR\n");
     Fixture f;
@@ -466,6 +479,7 @@ int main() {
     TestWindowClip();
     TestRotation();
     TestCircle();
+    TestSmallCircleMinChord();
     TestArcs();
     TestRectanglesAndWedges();
     TestOutputs();

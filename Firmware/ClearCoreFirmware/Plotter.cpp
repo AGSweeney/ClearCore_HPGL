@@ -42,6 +42,16 @@ static const char *g_fault = nullptr;
 static double g_stepsPerPu[2] = {4.0, 4.0};
 static uint32_t g_drawSps = 1;
 static uint32_t g_travelSps = 1;
+/* Path acceleration in steps/s^2, for the curvature speed cap. */
+static double g_accelSteps = 1.0;
+
+/* Direction and length of the last queued segment. XY stops at every pen change, so a
+ * pen action (or a resync) starts a new run with no previous direction. */
+static bool g_prevDirValid = false;
+static double g_prevDirX = 0.0;
+static double g_prevDirY = 0.0;
+static double g_prevLen = 0.0;
+static uint32_t g_curveCapped = 0;
 
 /* Queue tail: pen state and position after the last queued action. */
 static bool g_queuedPenDown = false;
@@ -126,6 +136,38 @@ static void SyncTailFromMotion() {
     g_tailX = g_xy.CurrentX();
     g_tailY = g_xy.CurrentY();
     g_queuedPenDown = g_physPenDown;
+    g_prevDirValid = false;
+}
+
+/* Arcs and curves arrive as short chords. The planner's per-axis corner limit (corner_mm_s)
+ * is applied at every joint but not over time, so many small joints in a row add up to
+ * far more than accel_mm_s2: on a 2 mm circle at 100 mm/s the axes are kicked about every
+ * 2 ms, about 5000 mm/s^2, and the motors shake. Estimate the local radius from the turn
+ * between consecutive segments (r ~ chord / angle) and cap the segment speed so the
+ * centripetal acceleration v^2 / r stays within the path acceleration. */
+static uint32_t CurvatureCap(int32_t dx, int32_t dy, uint32_t speed) {
+    const double len = sqrt((double)dx * (double)dx + (double)dy * (double)dy);
+    const double ux = (double)dx / len;
+    const double uy = (double)dy / len;
+    uint32_t capped = speed;
+    if (g_prevDirValid) {
+        double c = ux * g_prevDirX + uy * g_prevDirY;
+        c = (c > 1.0) ? 1.0 : ((c < -1.0) ? -1.0 : c);
+        const double angle = acos(c);
+        if (angle > 1e-3) {
+            const double radius = 0.5 * (len + g_prevLen) / angle;
+            const double vMax = sqrt(g_accelSteps * radius);
+            if (vMax < (double)speed) {
+                capped = (vMax < 1.0) ? 1u : (uint32_t)vMax;
+                g_curveCapped++;
+            }
+        }
+    }
+    g_prevDirValid = true;
+    g_prevDirX = ux;
+    g_prevDirY = uy;
+    g_prevLen = len;
+    return capped;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -253,10 +295,12 @@ public:
     void PenUp() override {
         Push(ACT_PEN_UP, 0, 0, 0);
         g_queuedPenDown = false;
+        g_prevDirValid = false;
     }
     void PenDown() override {
         Push(ACT_PEN_DOWN, 0, 0, 0);
         g_queuedPenDown = true;
+        g_prevDirValid = false;
     }
     void MoveTo(double xPu, double yPu) override {
         const int32_t sx = (int32_t)lround(xPu * g_stepsPerPu[0]);
@@ -264,7 +308,9 @@ public:
         if (sx == g_tailX && sy == g_tailY) {
             return;
         }
-        Push(ACT_LINE, sx, sy, g_queuedPenDown ? g_drawSps : g_travelSps);
+        const uint32_t speed = CurvatureCap(sx - g_tailX, sy - g_tailY,
+                                            g_queuedPenDown ? g_drawSps : g_travelSps);
+        Push(ACT_LINE, sx, sy, speed);
         g_tailX = sx;
         g_tailY = sy;
     }
@@ -324,7 +370,8 @@ void PlotterApplySettings() {
     const double travel = g_settings.travelMmS * spmmX;
     g_travelSps = travel < 1.0 ? 1u : (uint32_t)travel;
     g_sink.SetVelocity(0);
-    g_xy.ArcAccelMax((uint32_t)(g_settings.accelMmS2 * spmmX));
+    g_accelSteps = g_settings.accelMmS2 * spmmX;
+    g_xy.ArcAccelMax((uint32_t)g_accelSteps);
     g_xy.JunctionDVmax((uint32_t)(g_settings.cornerMmS * spmmX));
     for (MotorDriver *m : {&ConnectorM0, &ConnectorM1}) {
         m->EStopDecelMax((uint32_t)(g_settings.accelMmS2 * spmmX * 2.0));
@@ -583,9 +630,10 @@ void PlotterStatus(char *buf, size_t len) {
     const double y = (double)g_xy.CurrentY() / g_stepsPerPu[1] / HPGL_PU_PER_MM;
     snprintf(buf, len,
              "state=%s enabled=%d x_mm=%.3f y_mm=%.3f pen=%s sel_pen=%d queue=%u planner=%u "
-             "segments=%lu dropped=%lu pages=%lu estop=%s fault=%s",
+             "segments=%lu curve_capped=%lu dropped=%lu pages=%lu estop=%s fault=%s",
              state, g_enabled ? 1 : 0, x, y, g_physPenDown ? "down" : "up", g_pen,
              (unsigned)g_count, (unsigned)g_xy.MotionQueueCount(), (unsigned long)g_segments,
+             (unsigned long)g_curveCapped,
              (unsigned long)g_dropped, (unsigned long)g_pages, EstopTripped() ? "open" : "ok",
              g_fault ? g_fault : "none");
 }

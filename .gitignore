@@ -13,3 +13,23 @@ CMakeUserPresets.json
 # Python
 __pycache__/
 *.py[cod]
+
+# Atmel/Microchip Studio build outputs (keep generated Makefile + makedep.mk)
+/Firmware/ClearCoreFirmware/Debug/*
+/Firmware/ClearCoreFirmware/Release/*
+/libClearCore/Debug/*
+/libClearCore/Release/*
+/LwIP/Debug/*
+/LwIP/Release/*
+!/Firmware/ClearCoreFirmware/Debug/Makefile
+!/Firmware/ClearCoreFirmware/Debug/makedep.mk
+!/Firmware/ClearCoreFirmware/Release/Makefile
+!/Firmware/ClearCoreFirmware/Release/makedep.mk
+!/libClearCore/Debug/Makefile
+!/libClearCore/Debug/makedep.mk
+!/libClearCore/Release/Makefile
+!/libClearCore/Release/makedep.mk
+!/LwIP/Debug/Makefile
+!/LwIP/Debug/makedep.mk
+!/LwIP/Release/Makefile
+!/LwIP/Release/makedep.mk

@@ -139,14 +139,14 @@
         </armgcccpp.linker.libraries.Libraries>
         <armgcccpp.linker.libraries.LibrarySearchPaths>
           <ListValues>
-            <Value>../../Depreciated/MotionStreamingExample/Device_Startup</Value>
+            <Value>../Device_Startup</Value>
             <Value>%24(PackRepoDir)\arm\CMSIS\4.5.0\CMSIS\Lib\GCC</Value>
-            <Value>%24(ProjectDir)\..\..\Depreciated\MotionStreamingExample\Device_Startup</Value>
+            <Value>%24(ProjectDir)\Device_Startup</Value>
           </ListValues>
         </armgcccpp.linker.libraries.LibrarySearchPaths>
         <armgcccpp.linker.optimization.GarbageCollectUnusedSections>True</armgcccpp.linker.optimization.GarbageCollectUnusedSections>
         <armgcccpp.linker.memorysettings.ExternalRAM />
-        <armgcccpp.linker.miscellaneous.LinkerFlags>-T../../Depreciated/MotionStreamingExample/Device_Startup/flash_with_bootloader.ld -mfloat-abi=hard -mfpu=fpv4-sp-d16</armgcccpp.linker.miscellaneous.LinkerFlags>
+        <armgcccpp.linker.miscellaneous.LinkerFlags>-T../Device_Startup/flash_with_bootloader.ld -mfloat-abi=hard -mfpu=fpv4-sp-d16</armgcccpp.linker.miscellaneous.LinkerFlags>
         <armgcccpp.assembler.general.IncludePaths>
           <ListValues>
             <Value>%24(PackRepoDir)\atmel\SAME53_DFP\1.1.118\include</Value>
@@ -228,14 +228,14 @@
         </armgcccpp.linker.libraries.Libraries>
         <armgcccpp.linker.libraries.LibrarySearchPaths>
           <ListValues>
-            <Value>../../Depreciated/MotionStreamingExample/Device_Startup</Value>
+            <Value>../Device_Startup</Value>
             <Value>%24(PackRepoDir)\arm\CMSIS\4.5.0\CMSIS\Lib\GCC</Value>
-            <Value>%24(ProjectDir)\..\..\Depreciated\MotionStreamingExample\Device_Startup</Value>
+            <Value>%24(ProjectDir)\Device_Startup</Value>
           </ListValues>
         </armgcccpp.linker.libraries.LibrarySearchPaths>
         <armgcccpp.linker.optimization.GarbageCollectUnusedSections>True</armgcccpp.linker.optimization.GarbageCollectUnusedSections>
         <armgcccpp.linker.memorysettings.ExternalRAM />
-        <armgcccpp.linker.miscellaneous.LinkerFlags>-T../../Depreciated/MotionStreamingExample/Device_Startup/flash_with_bootloader.ld -mfloat-abi=hard -mfpu=fpv4-sp-d16</armgcccpp.linker.miscellaneous.LinkerFlags>
+        <armgcccpp.linker.miscellaneous.LinkerFlags>-T../Device_Startup/flash_with_bootloader.ld -mfloat-abi=hard -mfpu=fpv4-sp-d16</armgcccpp.linker.miscellaneous.LinkerFlags>
         <armgcccpp.assembler.general.IncludePaths>
           <ListValues>
             <Value>%24(PackRepoDir)\atmel\SAME53_DFP\1.1.118\include</Value>
@@ -259,28 +259,23 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\Depreciated\MotionStreamingExample\Device_Startup\startup_same53.c">
+    <Compile Include="Device_Startup\startup_same53.c">
       <SubType>compile</SubType>
-      <Link>Device_Startup\startup_same53.c</Link>
     </Compile>
     <Compile Include="ClearCNC_Firmware.cpp">
       <SubType>compile</SubType>
     </Compile>
-    <None Include="..\..\Depreciated\MotionStreamingExample\Device_Startup\flash_without_bootloader.ld">
+    <None Include="Device_Startup\flash_without_bootloader.ld">
       <SubType>compile</SubType>
-      <Link>Device_Startup\flash_without_bootloader.ld</Link>
     </None>
-    <None Include="..\..\Depreciated\MotionStreamingExample\Device_Startup\flash_with_bootloader.ld">
+    <None Include="Device_Startup\flash_with_bootloader.ld">
       <SubType>compile</SubType>
-      <Link>Device_Startup\flash_with_bootloader.ld</Link>
     </None>
-    <None Include="..\..\Depreciated\MotionStreamingExample\Device_Startup\same53n19a_flash.ld">
+    <None Include="Device_Startup\same53n19a_flash.ld">
       <SubType>compile</SubType>
-      <Link>Device_Startup\same53n19a_flash.ld</Link>
     </None>
-    <None Include="..\..\Depreciated\MotionStreamingExample\Device_Startup\same53n19a_sram.ld">
+    <None Include="Device_Startup\same53n19a_sram.ld">
       <SubType>compile</SubType>
-      <Link>Device_Startup\same53n19a_sram.ld</Link>
     </None>
   </ItemGroup>
 

@@ -50,6 +50,7 @@ void JobOptimizer::ResetBuffer() {
 void JobOptimizer::BeginJob(bool optimize) {
     ResetBuffer();
     m_passRest = false;
+    m_jobEnded = false;
     if (!optimize || !m_out) {
         m_mode = M_PASS;
         return;
@@ -70,8 +71,11 @@ void JobOptimizer::BeginJob(bool optimize) {
 }
 
 void JobOptimizer::EndJob() {
+    m_jobEnded = true;
     if (m_mode != M_COLLECT) {
-        return;  /* passing through (off, or after a spill): nothing held back */
+        /* Passing through (off, or after a spill): nothing held back. Replaying a page (PG): the
+         * replay sees m_jobEnded and finishes instead of collecting a next page. */
+        return;
     }
     EndStroke();
     Order();
@@ -85,6 +89,7 @@ void JobOptimizer::Abort() {
     ResetBuffer();
     m_mode = M_PASS;
     m_passRest = false;
+    m_jobEnded = false;
     m_curVelocity = -1;  /* unknown after an abort: re-sent by the next replay */
     m_curPen = -1;
 }
@@ -743,7 +748,8 @@ void JobOptimizer::Pump() {
         } else if (m_pageEndPending) {
             m_out->PageEnd();
             ResetBuffer();
-            m_mode = M_COLLECT;  /* next page of the same job */
+            /* next page of the same job, unless the job has already ended (it ended with PG) */
+            m_mode = m_jobEnded ? M_PASS : M_COLLECT;
         } else {
             ResetBuffer();
             m_mode = M_PASS;

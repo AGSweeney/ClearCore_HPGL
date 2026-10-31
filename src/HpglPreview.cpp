@@ -1,6 +1,7 @@
 #include "HpglPreview.h"
 
 #include "Hpgl.h"
+#include "HpglChannel.h"
 
 namespace {
 
@@ -57,6 +58,12 @@ private:
     bool m_stripOpen = false;
 };
 
+/* Replies (ESC.B, OI, ...) go nowhere in a preview. */
+class NullIo : public HpglChannelIo {
+public:
+    void ChannelSend(const uint8_t *, uint16_t) override {}
+};
+
 } // namespace
 
 HpglPreviewResult PreviewHpgl(const QByteArray &hpgl, double plotWidthMm, double plotHeightMm, const char *ident) {
@@ -64,11 +71,22 @@ HpglPreviewResult PreviewHpgl(const QByteArray &hpgl, double plotWidthMm, double
     PreviewSink sink(&result);
     HpglInterpreter interp;
     interp.Init(&sink, plotWidthMm * HPGL_PU_PER_MM, plotHeightMm * HPGL_PU_PER_MM, ident);
+    /* Through the board's input channel, as on the board: it strips PCL/PJL escapes (an HP-GL/2
+     * job from a DesignJet-style driver starts with ESC%-1B) and answers ESC. device control.
+     * Each byte goes straight through, so the vertex-to-byte mapping stays exact. */
+    NullIo io;
+    uint8_t ring[64];
+    HpglChannel channel;
+    channel.Init(&io, ring, sizeof(ring), 0);
     for (const char c : hpgl) {
-        interp.Feed(uint8_t(c));
-        sink.byte++;
-        while (interp.Busy()) {
-            interp.Pump();
+        channel.Ingest(uint8_t(c));
+        sink.byte++;  /* moves record the offset just past the byte that completed them */
+        uint8_t b;
+        while (channel.Pop(&b)) {
+            interp.Feed(b);
+            while (interp.Busy()) {
+                interp.Pump();
+            }
         }
     }
     interp.Feed(';');  /* end of file ends the last instruction, as on the board */

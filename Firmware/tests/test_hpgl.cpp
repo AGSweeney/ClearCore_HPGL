@@ -603,6 +603,16 @@ static void TestOptimizerPenGroups() {
     CHECK(f.sink.pen == 0);
 }
 
+static void TestOptimizerEndsWithPage() {
+    printf("job optimizer: job ending with PG finishes\n");
+    OptFixture f(true);
+    f.Run("IN;SP1;PU5000,0;PD6000,0;PU;PU100,0;PD200,0;PU;SP0;PG;");
+    const std::vector<std::string> s = f.Strokes();
+    CHECK(s.size() == 2 && s[0] == "100,0 200,0");
+    CHECK(f.sink.pages == 1);
+    CHECK(!g_opt.Busy());  /* was stuck collecting a next page that never came */
+}
+
 static void TestOptimizerSpill() {
     printf("job optimizer: too big = as received, nothing lost\n");
     OptFixture f(true);
@@ -646,15 +656,46 @@ static int OptimizeFile(const char *path, const char *ident) {
     g_opt.Init(&sink);
     h.Init(&g_opt, kW, kH, ident);
     g_opt.BeginJob(true);
+    size_t fed = 0;
     for (char c : job) {
-        while (g_opt.Room() <= HpglInterpreter::kRoomReserve && g_opt.Busy()) g_opt.Pump();
+        if (getenv("OPT_TRACE") && (fed++ % 200) == 0) {
+            fprintf(stderr, "fed %zu busy=%d replay=%d room=%u\n", fed, g_opt.Busy(), g_opt.Replaying(), (unsigned)g_opt.Room());
+        }
+        long waits = 0;
+        while (g_opt.Room() <= HpglInterpreter::kRoomReserve && g_opt.Busy()) {
+            g_opt.Pump();
+            if (getenv("OPT_TRACE") && ++waits == 1000000) {
+                fprintf(stderr, "replay stuck before byte %zu: replay=%d sinkroom=%u events=%zu last=%s\n", fed,
+                        g_opt.Replaying(), (unsigned)sink.room, sink.events.size(),
+                        sink.events.empty() ? "-" : sink.events.back().c_str());
+            }
+        }
         h.Feed((uint8_t)c);
-        while (h.Busy()) { g_opt.Pump(); h.Pump(); }
+        long spins = 0;
+        while (h.Busy()) {
+            g_opt.Pump();
+            h.Pump();
+            if (getenv("OPT_TRACE") && ++spins == 1000000) {
+                fprintf(stderr, "stuck at byte %zu ('%c'): busy=%d replay=%d room=%u sinkroom=%u events=%zu\n", fed, c,
+                        g_opt.Busy(), g_opt.Replaying(), (unsigned)g_opt.Room(), (unsigned)sink.room, sink.events.size());
+            }
+        }
     }
+    if (getenv("OPT_TRACE")) fprintf(stderr, "stage: all bytes fed\n");
     h.Feed(';');
     while (h.Busy()) { g_opt.Pump(); h.Pump(); }
+    if (getenv("OPT_TRACE")) fprintf(stderr, "stage: interpreter idle\n");
     g_opt.EndJob();
+    if (getenv("OPT_TRACE")) {
+        fprintf(stderr, "stage: EndJob returned: sinkroom=%u events=%zu\n", (unsigned)sink.room, sink.events.size());
+        for (size_t k = 0; k < sink.events.size() && k < 60; k++) fprintf(stderr, "%s ", sink.events[k].c_str());
+        fprintf(stderr, "\n...\n");
+        for (size_t k = sink.events.size() > 30 ? sink.events.size() - 30 : 0; k < sink.events.size(); k++) fprintf(stderr, "%s ", sink.events[k].c_str());
+        fprintf(stderr, "\n");
+    }
     while (g_opt.Busy()) g_opt.Pump();
+    if (getenv("OPT_TRACE")) fprintf(stderr, "stage: replay done\n");
+
     /* drawn length must not change: same lines, other order */
     auto drawn = [](const MockSink &s) {
         double len = 0, x = 0, y = 0;
@@ -676,6 +717,8 @@ static int OptimizeFile(const char *path, const char *ident) {
     HpglInterpreter hd;
     hd.Init(&direct, kW, kH, ident);
     FeedAll(hd, job.c_str(), job.size());
+    if (getenv("OPT_TRACE")) fprintf(stderr, "stage: direct run done\n");
+
     printf("drawn %.1f mm optimized vs %.1f mm as received\n", drawn(sink), drawn(direct));
     printf("%s (%s): %u strokes -> %u paths, pen-up travel %.0f -> %.0f mm%s, end at %.0f,%.0f pen %s\n", path, ident,
            (unsigned)g_opt.LastStrokes(), (unsigned)g_opt.LastPaths(), g_opt.LastTravelBeforeMm(),
@@ -713,6 +756,7 @@ int main(int argc, char **argv) {
     TestOptimizerReorders();
     TestOptimizerOffPassesThrough();
     TestOptimizerPenGroups();
+    TestOptimizerEndsWithPage();
     TestOptimizerSpill();
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

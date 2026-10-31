@@ -20,12 +20,13 @@ int main(int argc, char **argv) {
         return 2;
     }
     if (QString::fromLocal8Bit(argv[1]) == QLatin1String("--hpgl-extent")) {
-        /* Where a job lands on the bed, through the firmware interpreter: --hpgl-extent <file> [ident] */
+        /* Where a job lands on the bed, through the firmware interpreter: --hpgl-extent <file> [ident] [w h] */
         QFile hf(QString::fromLocal8Bit(argv[2]));
         if (!hf.open(QIODevice::ReadOnly)) {
             return 3;
         }
-        const HpglPreviewResult r = PreviewHpgl(hf.readAll(), 400.0, 300.0, argc > 3 ? argv[3] : "7475A");
+        const double bedW = argc > 4 ? atof(argv[4]) : 400.0, bedH = argc > 5 ? atof(argv[5]) : 300.0;
+        const HpglPreviewResult r = PreviewHpgl(hf.readAll(), bedW, bedH, argc > 3 ? argv[3] : "7475A");
         float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
         for (const auto &s : r.cutStripsMm) {
             for (const QVector3D &p : s) {

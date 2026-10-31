@@ -118,6 +118,7 @@ private:
     Mode m_mode = M_PASS;
     bool m_passRest = false;     /* after a spill: forward the rest of the job */
     bool m_pageEndPending = false;
+    bool m_jobEnded = false;     /* EndJob() came while a page was being replayed */
 
     /* collection */
     int16_t m_in[2 * kMaxPoints];

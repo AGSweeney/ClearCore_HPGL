@@ -32,6 +32,9 @@ qt_add_executable(ClearHPGL WIN32
     # The firmware's HP-GL interpreter (portable C++), so the preview matches the plotter.
     Firmware/ClearCoreFirmware/Hpgl.h
     Firmware/ClearCoreFirmware/Hpgl.cpp
+    # ...and its input channel, which strips PCL/PJL escapes and handles ESC. device control.
+    Firmware/ClearCoreFirmware/HpglChannel.h
+    Firmware/ClearCoreFirmware/HpglChannel.cpp
 )
 
 target_include_directories(ClearHPGL PRIVATE Firmware/ClearCoreFirmware)
@@ -68,6 +71,7 @@ if (CLEARHPGL_BUILD_TESTS)
         src/HpglPreview.h
         src/HpglPreview.cpp
         Firmware/ClearCoreFirmware/Hpgl.cpp
+        Firmware/ClearCoreFirmware/HpglChannel.cpp
     )
     target_include_directories(test_plotterlink PRIVATE src Firmware/ClearCoreFirmware)
     target_link_libraries(test_plotterlink PRIVATE Qt6::Core Qt6::Network Qt6::SerialPort Qt6::Gui)
@@ -86,6 +90,7 @@ if (CLEARHPGL_BUILD_TESTS)
         src/PathVizIssues.cpp src/PathVizIssues.h
         resources/app_resources.qrc
         Firmware/ClearCoreFirmware/Hpgl.cpp
+        Firmware/ClearCoreFirmware/HpglChannel.cpp
     )
     target_include_directories(render_settings_dialog PRIVATE src Firmware/ClearCoreFirmware)
     target_link_libraries(render_settings_dialog PRIVATE Qt6::OpenGLWidgets Qt6::OpenGL Qt6::Widgets Qt6::Svg

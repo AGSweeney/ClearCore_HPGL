@@ -729,8 +729,8 @@ void MainWindow::UpdateMachineButtons() {
     for (auto *b : m_jogButtons) {
         b->setEnabled(manualOk && s.valid);
     }
-    m_plotButton->setEnabled(conn && !jobBusy && m_source != SourceKind::None);
-    m_stopButton->setEnabled(conn && jobBusy);
+    m_plotButton->setEnabled(conn && !jobBusy && !m_externalJob && m_source != SourceKind::None);
+    m_stopButton->setEnabled(conn && (jobBusy || m_externalJob));
     m_exportHpglAction->setEnabled(m_source != SourceKind::None);
     m_saveDxfGeometryAction->setEnabled(m_source == SourceKind::Dxf && !m_dxfPolylinesMm.isEmpty());
 
@@ -868,6 +868,7 @@ void MainWindow::OnLinkLost(const QString &reason) {
     AppendLog(QStringLiteral("Connection lost: %1").arg(reason));
     m_jobSending = false;
     m_jobAwaitingFinish = false;
+    m_externalJob = false;
     StopCycleTimer(QStringLiteral("Plot interrupted (connection lost)"));
     SetConnectedUi(false);
 }
@@ -899,7 +900,8 @@ void MainWindow::OnStatus(const PlotterLink::Status &s) {
     PlaceStateOverlay();
     UpdatePenView(s);
 
-    if (m_jobSending || m_jobAwaitingFinish) {
+    TrackExternalJob(s, faulted);
+    if (m_jobSending || m_jobAwaitingFinish || m_externalJob) {
         UpdateProgress(s);
     }
     if (m_jobAwaitingFinish) {
@@ -934,8 +936,39 @@ void MainWindow::UpdatePenView(const PlotterLink::Status &s) {
 // completion stay on the full status poll.
 void MainWindow::OnTelemetry(const PlotterLink::Status &s) {
     UpdatePenView(s);
-    if (m_jobSending || m_jobAwaitingFinish) {
+    if (m_jobSending || m_jobAwaitingFinish || m_externalJob) {
         UpdateProgress(s);
+    }
+}
+
+/* A job from another source: the board reports which input owns the plotter (source=). Start
+ * following when it plots from USB or COM with nothing sent from here; finish when it is idle,
+ * empty and released by that source (the board lets go after 2 s of quiet), so a short gap in
+ * the host's data does not end it early. */
+void MainWindow::TrackExternalJob(const PlotterLink::Status &s, bool faulted) {
+    const bool foreign = s.source == QLatin1String("usb") || s.source == QLatin1String("com");
+    const bool busy = s.state == QLatin1String("plotting") || s.state == QLatin1String("paused") || s.queue > 0;
+    if (!m_externalJob) {
+        if (foreign && busy && !m_jobSending && !m_jobAwaitingFinish && m_source != SourceKind::None) {
+            m_externalJob = true;
+            m_externalSource = s.source.toUpper();
+            ResetProgress();
+            m_progress->setFormat("%p% drawn");
+            m_progress->setValue(0);
+            StartCycleTimer();
+            AppendLog(QStringLiteral("Following a plot sent over %1 (progress assumes it is %2)")
+                          .arg(m_externalSource, QFileInfo(m_sourcePath).fileName()));
+        }
+        return;
+    }
+    if (faulted) {
+        m_externalJob = false;
+        StopCycleTimer(QStringLiteral("Plot over %1 stopped (%2)").arg(m_externalSource, s.fault));
+    } else if (!busy && s.source == QLatin1String("none")) {
+        m_externalJob = false;
+        PushProgressToView(true);
+        m_progress->setValue(100);
+        StopCycleTimer(QStringLiteral("Plot over %1 complete").arg(m_externalSource));
     }
 }
 
@@ -1373,6 +1406,14 @@ void MainWindow::UpdateProgress(const PlotterLink::Status &s) {
     m_progressSeg = best;
     m_progressT = bestT;
     PushProgressToView();
+    if (m_externalJob && !m_plan.isEmpty()) {
+        /* Nothing is sent from here, so the bar shows how much of the path is drawn. */
+        const PlanSeg &last = m_plan.last();
+        const double total = last.cumStart + double((last.b - last.a).length());
+        const PlanSeg &cur = m_plan[best];
+        const double done = cur.cumStart + double((cur.b - cur.a).length()) * double(bestT);
+        m_progress->setValue(total > 0.0 ? int(qBound(0.0, done / total, 1.0) * 100.0) : 0);
+    }
     const int shape = m_plan[best].strip;
     if (shape != m_progressShapeShown) {
         m_progressShapeShown = shape;
@@ -1486,6 +1527,7 @@ void MainWindow::StartPlot() {
         return;
     }
     ResetProgress();
+    m_progress->setFormat("%p% sent");
     StartCycleTimer();
     m_jobSending = true;
     m_jobAwaitingFinish = false;
@@ -1502,6 +1544,7 @@ void MainWindow::StopPlot() {
     }
     m_jobSending = false;
     m_jobAwaitingFinish = false;
+    m_externalJob = false;
     StopCycleTimer(QStringLiteral("Plot aborted"));
     if (m_link.isConnected()) {
         Command("abort");

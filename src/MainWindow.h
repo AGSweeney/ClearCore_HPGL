@@ -94,6 +94,7 @@ private:
     void PushProgressToView(bool allDone = false);
     void SetPreviewText(const QByteArray &job);
     void ShowActiveLine(int line);
+    void TrackExternalJob(const PlotterLink::Status &s, bool faulted);
     void ApplyDeviceConfig(const QStringList &lines);
     void ShowSettingsDialog(const QStringList &configLines);
     void PromptSaveDxfAfterGeometryFix();
@@ -213,6 +214,11 @@ private:
     bool m_jobSending = false;
     bool m_jobAwaitingFinish = false;
     bool m_jobSawBusy = false;
+    // A job another source (USB or COM, e.g. "copy /b file.plt COM3") is plotting while this app
+    // is connected over Ethernet: progress, highlight and cycle timer follow it as if sent here,
+    // assuming it is the drawing loaded in the app.
+    bool m_externalJob = false;
+    QString m_externalSource;
     qint64 m_jobSentMs = 0;
     int m_progressShapeShown = -1;
 };

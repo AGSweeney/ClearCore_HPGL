@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PathVizIssues.h"
 #include "PlotterLink.h"
 
 #include <QByteArray>
@@ -156,6 +157,8 @@ private:
     QCheckBox *m_lockTopDownViewCheck = nullptr;
     QCheckBox *m_leftDragOrbitCheck = nullptr;
     QCheckBox *m_followPenCheck = nullptr;
+    QCheckBox *m_issuesCheck = nullptr;
+    QVector<PathIssueMarker> m_pathIssueMarkers;  // drawing-check results; shown only with Issues on
     bool m_didWorkAreaInitialSplit = false;
     int m_savedLogPaneHeight = 320;
 

@@ -567,10 +567,15 @@ void MainWindow::BuildUi() {
     pos3dHeader->addStretch();
     m_pathCheck = new QCheckBox("Path", pos3dGroup);
     m_pathCheck->setToolTip(
-        "Yellow = pen down, gray = pen up. Red crosshairs flag open contours, overlaps and tight corners; "
-        "right-click one for DXF quick fixes.");
+        "Yellow = pen down, gray = pen up.");
     m_pathCheck->setChecked(true);
     pos3dHeader->addWidget(m_pathCheck);
+    m_issuesCheck = new QCheckBox("Issues", pos3dGroup);
+    m_issuesCheck->setToolTip(
+        "Mark drawing-check findings with red crosses: unjoined line ends, overlaps and tight corners. "
+        "Right-click a cross for DXF quick fixes. Line ends are normal in plots, so this is off by default.");
+    m_issuesCheck->setChecked(AppSettings().value("ui/showPathIssues", false).toBool());
+    pos3dHeader->addWidget(m_issuesCheck);
     m_lockTopDownViewCheck = new QCheckBox("Top-down", pos3dGroup);
     pos3dHeader->addWidget(m_lockTopDownViewCheck);
     m_leftDragOrbitCheck = new QCheckBox("L-drag rotate", pos3dGroup);
@@ -595,6 +600,10 @@ void MainWindow::BuildUi() {
 
     connect(reset3d, &QPushButton::clicked, m_positionView3D, &PositionView3D::resetView);
     connect(m_pathCheck, &QCheckBox::toggled, m_positionView3D, &PositionView3D::setPathTraceEnabled);
+    connect(m_issuesCheck, &QCheckBox::toggled, this, [this](bool on) {
+        AppSettings().setValue("ui/showPathIssues", on);
+        m_positionView3D->setPathIssues(on ? m_pathIssueMarkers : QVector<PathIssueMarker>());
+    });
     connect(m_lockTopDownViewCheck, &QCheckBox::toggled, this, [this](bool on) {
         m_positionView3D->setTopDownLocked(on);
         AppSettings().setValue("ui/viewportTopDownLocked", on);
@@ -1125,7 +1134,8 @@ void MainWindow::RebuildPreview() {
         }
     }
     m_positionView3D->setProgramPathSplit(m_previewStripsMm, m_previewRapidsMm);
-    m_positionView3D->setPathIssues(markers);
+    m_pathIssueMarkers = markers;
+    m_positionView3D->setPathIssues(m_issuesCheck->isChecked() ? markers : QVector<PathIssueMarker>());
     BuildProgressPlan();
     m_pathCheck->setEnabled(m_source != SourceKind::None);
     UpdatePlotInfo();

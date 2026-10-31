@@ -60,7 +60,7 @@ ClearHPGL (Qt 6, Windows) is optional, but it makes the machine much easier to u
 | Part | Notes |
 |------|-------|
 | Teknic ClearCore | Runs the firmware. |
-| Two ClearPath servos | Step-and-direction mode (ClearPath-SD, or MC in step/dir) on M0 (X) and M1 (Y), with HLFB. |
+| Two ClearPath-SD servos | Step and direction on M0 (X) and M1 (Y), with HLFB. |
 | Pen lift | A solenoid or relay on a digital output (IO-0 by default), or a third ClearPath on M2. |
 | E-stop | Wired to DI-6. Without one, `set estop_di6 0`. |
 | Build tools | Microchip/Atmel Studio 7 for the firmware; Visual Studio 2022, CMake and Qt 6 (vcpkg) for the app. |

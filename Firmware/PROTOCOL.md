@@ -4,7 +4,7 @@
 
 The board behaves like an HP-GL pen plotter (HP 7475A class) with the HP-GL/2 commands that drivers commonly emit. A host sends a `.plt` / `.hpgl` file over any of the links below and it plots. No host software is required.
 
-Firmware `0.1.0`. Built and host-tested; **not yet run on hardware.**
+Firmware `0.1.0`. Host-tested, and run on one bench setup (ClearCore, ClearPath-SD on X and Y, pen on an output).
 
 ## Links
 

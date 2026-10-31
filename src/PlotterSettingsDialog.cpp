@@ -47,6 +47,7 @@ const QList<Section> &Sections() {
           {"height_mm", "Plot area height", "mm", {}}}},
         {"Motion",
          {{"draw_mm_s", "Pen-down speed", "mm/s", {}},
+          {"job_speed", "Pen speed from jobs (VS)", "", {{"1", "Use the job's speed"}, {"0", "Ignore: always the pen-down speed"}}},
           {"travel_mm_s", "Pen-up speed", "mm/s", {}},
           {"max_mm_s", "Max speed (VS limit)", "mm/s", {}},
           {"accel_mm_s2", "Acceleration", "mm/s²", {}},

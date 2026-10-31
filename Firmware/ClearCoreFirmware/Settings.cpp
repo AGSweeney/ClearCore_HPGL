@@ -13,7 +13,7 @@
 /* User-page blob. Magic differs from ClearAI ('CAIC') and ClearCoreROS ('CROS')
  * so a blob left by either is ignored instead of misread. */
 static const uint32_t CHPGL_NVM_MAGIC = 0x47504843u; /* 'CHPG' */
-static const uint16_t CHPGL_NVM_VERSION = 2;
+static const uint16_t CHPGL_NVM_VERSION = 3;
 
 static_assert(sizeof(PlotterSettings) <= ClearCore::NvmManager::NVM_LOC_RESERVED_TEKNIC,
               "settings blob must fit below the Teknic reserved area");
@@ -65,6 +65,7 @@ void SettingsDefaults() {
     g_settings.estopDi6 = 1;
     g_settings.autoEnable = 1;
     g_settings.optimize = 3;  /* USB and COM: jobs from CAD drivers; the app orders its own */
+    g_settings.jobSpeed = 1;
     g_settings.hlfbCheck = 1;
     g_settings.comPort = 0;
     g_settings.comBaud = 9600;
@@ -130,18 +131,29 @@ void SettingsLoad() {
     Nvm().BlockRead(ClearCore::NvmManager::NVM_LOC_USER_START, (int)sizeof(raw), raw);
     PlotterSettings s;
     memcpy(&s, raw, sizeof(s));
-    if (s.magic == CHPGL_NVM_MAGIC && s.version == 1 && s.size == offsetof(PlotterSettings, optimize) + 4) {
-        /* Version 1 ended with ident then its checksum: keep those settings, add the new field.
-         * Saved as version 2 on the next "set". */
-        uint32_t v1Sum;
-        memcpy(&v1Sum, raw + offsetof(PlotterSettings, optimize), 4);
+    /* Older versions are a prefix of this layout (fields are only appended), each ending with
+     * its checksum: keep their settings and default the newer fields. Saved as the current
+     * version on the next "set". */
+    static const size_t kFieldsEnd[] = {
+        0,
+        offsetof(PlotterSettings, optimize),  /* version 1 */
+        offsetof(PlotterSettings, jobSpeed),  /* version 2 */
+    };
+    if (s.magic == CHPGL_NVM_MAGIC && s.version >= 1 && s.version < CHPGL_NVM_VERSION &&
+        s.size == kFieldsEnd[s.version] + 4) {
+        const size_t end = kFieldsEnd[s.version];
+        uint32_t oldSum;
+        memcpy(&oldSum, raw + end, 4);
         uint32_t h = 2166136261u;
-        for (size_t i = 0; i < offsetof(PlotterSettings, optimize); i++) {
+        for (size_t i = 0; i < end; i++) {
             h ^= raw[i];
             h *= 16777619u;
         }
-        if (h == v1Sum) {
-            s.optimize = 3;
+        if (h == oldSum) {
+            if (s.version < 2) {
+                s.optimize = 3;
+            }
+            s.jobSpeed = 1;
             s.version = CHPGL_NVM_VERSION;
             s.size = sizeof(PlotterSettings);
             s.checksum = Checksum(&s);
@@ -251,6 +263,7 @@ static const KeyDef kKeys[] = {
     {"estop_di6", K_U8, OFS(estopDi6), 0, 2, KF_LIVE, "0 off, 1 fault when DI-6 low, 2 fault when high"},
     {"auto_enable", K_U8, OFS(autoEnable), 0, 1, KF_LIVE, "enable motors when a job arrives"},
     {"optimize", K_U8, OFS(optimize), 0, 7, KF_LIVE, "reorder jobs before plotting: 1 USB + 2 COM + 4 network"},
+    {"job_speed", K_U8, OFS(jobSpeed), 0, 1, KF_LIVE, "1 = jobs set pen speed (VS), 0 = always draw_mm_s"},
     {"hlfb_check", K_U8, OFS(hlfbCheck), 0, 1, KF_LIVE, "require HLFB asserted on enable"},
     {"com_port", K_U8, OFS(comPort), 0, 2, KF_RESTART, "serial plotter port: 0 off, 1 COM-0, 2 COM-1"},
     {"com_baud", K_U32, OFS(comBaud), 300, 1000000, KF_RESTART, "serial baud"},

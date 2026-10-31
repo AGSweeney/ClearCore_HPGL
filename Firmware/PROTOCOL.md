@@ -171,6 +171,7 @@ Stored in the NVM user page with magic `CHPG`, so blobs left by ClearAI (`CAIC`)
 | `net_mode`, `ip`, `netmask`, `gateway` | DHCP | restart |
 | `ident` | `7475A` | live. `758x` / `759x` (DraftMaster, e.g. AutoCAD's "Draftmaster 2 (7596A)" driver): plotter 0,0 at the bed centre, `OH` reports `-w/2,-h/2,w/2,h/2` |
 | `optimize` | 3 (USB + COM) | live. Sources to buffer and reorder: 1 USB, 2 COM, 4 network |
+| `job_speed` | 1 | live. 1: a job's `VS` sets the pen-down speed (cm/s, capped at `max_mm_s`). 0: ignore `VS`, always `draw_mm_s` |
 
 ## Not implemented yet
 

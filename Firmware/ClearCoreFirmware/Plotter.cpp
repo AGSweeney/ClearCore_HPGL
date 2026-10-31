@@ -316,7 +316,9 @@ public:
         g_tailY = sy;
     }
     void SetVelocity(double mmPerSec) override {
-        double v = (mmPerSec <= 0) ? g_settings.drawMmS : mmPerSec;
+        /* job_speed 0: the board's pen-down speed, whatever the job asks for (CAD drivers send
+         * their own VS, e.g. AutoCAD's pen speed table). */
+        double v = (mmPerSec <= 0 || !g_settings.jobSpeed) ? g_settings.drawMmS : mmPerSec;
         if (v > g_settings.maxMmS) {
             v = g_settings.maxMmS;
         }

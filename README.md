@@ -176,7 +176,6 @@ python Firmware/host/fake_plotter.py --bind 127.0.0.1   # stand-in board for tes
 | `tests/` | App test tools |
 | `libClearCore/`, `LwIP/` | ClearCore library and TCP/IP stack the firmware builds on |
 | `tools/` | Flashing and UF2 tools |
-| `ProjectData/SampleDXF/` | Sample drawings |
 
 ## License
 

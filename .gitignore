@@ -5,6 +5,9 @@ build/
 out/
 CMakeUserPresets.json
 
+# Local sample and test drawings (not distributed)
+/ProjectData/SampleDXF/
+
 # IDE
 .vs/
 .vscode/

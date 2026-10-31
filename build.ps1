@@ -15,7 +15,12 @@ param(
 
     [switch]$Clean,
     [switch]$SkipDeploy,
-    [switch]$SkipConfigure
+    [switch]$SkipConfigure,
+
+    # Copy the deployed app to a local folder and add a Start-menu shortcut (pin that copy to the
+    # taskbar; the build folder is rewritten on every build and may be on a network share).
+    [switch]$Install,
+    [string]$InstallDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -214,6 +219,46 @@ if (-not $SkipDeploy) {
     }
 } else {
     Write-Host "Skipping windeployqt (-SkipDeploy)."
+}
+
+if ($Install) {
+    if ($SkipDeploy) {
+        throw "-Install needs the deployed build; do not combine it with -SkipDeploy."
+    }
+    if (-not $appExe) {
+        $appExe = Resolve-ClearHPGLExe -ResolvedBuildDir $ResolvedBuildDir -BuildConfiguration $Config
+    }
+    if ([string]::IsNullOrWhiteSpace($InstallDir)) {
+        $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\ClearHPGL"
+    }
+    $installedExe = Join-Path $InstallDir "ClearHPGL.exe"
+    $running = Get-Process -Name ClearHPGL -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and ($_.Path -ieq $installedExe) }
+    if ($running) {
+        throw "ClearHPGL is running from $InstallDir; close it and run the install again."
+    }
+    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+    # Mirror the deployed folder (removes files a newer build no longer ships); skip debug symbols,
+    # the test programs and the redistributable installer (the CRT DLLs are already app-local).
+    & robocopy (Split-Path -Parent $appExe) $InstallDir /MIR /XF *.pdb *.ilk dxf_probe.exe render_settings_dialog.exe test_plotterlink.exe vc_redist.x64.exe /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) {
+        throw "Copying to $InstallDir failed (robocopy exit code $LASTEXITCODE)."
+    }
+    $global:LASTEXITCODE = 0
+    # /MIR leaves excluded names alone in the destination, so drop any left by an older install.
+    foreach ($extra in @("dxf_probe.exe", "render_settings_dialog.exe", "test_plotterlink.exe", "vc_redist.x64.exe")) {
+        Remove-Item -LiteralPath (Join-Path $InstallDir $extra) -Force -ErrorAction SilentlyContinue
+    }
+    $startMenu = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)) "ClearHPGL.lnk"
+    $shell = New-Object -ComObject WScript.Shell
+    $lnk = $shell.CreateShortcut($startMenu)
+    $lnk.TargetPath = $installedExe
+    $lnk.WorkingDirectory = $InstallDir
+    $lnk.IconLocation = "$installedExe,0"
+    $lnk.Description = "ClearHPGL plotter host"
+    $lnk.Save()
+    Write-Host "Installed to $InstallDir"
+    Write-Host "Start-menu shortcut: $startMenu (pin this copy to the taskbar)"
 }
 
 Write-Host "Done."

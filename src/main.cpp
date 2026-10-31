@@ -5,17 +5,9 @@
 #include <QString>
 #include <QSurfaceFormat>
 
-#ifdef Q_OS_WIN
-#    define WIN32_LEAN_AND_MEAN
-#    include <windows.h>
-#    include <shobjidl.h> // SetCurrentProcessExplicitAppUserModelID
-#endif
-
 int main(int argc, char *argv[]) {
-#ifdef Q_OS_WIN
-    // Pinned taskbar uses shell identity; must be set before QApplication in main().
-    (void)SetCurrentProcessExplicitAppUserModelID(L"ClearHPGL.ClearHPGL.1.0");
-#endif
+    // No explicit AppUserModelID: Windows identifies the app by its exe path, which is what lets
+    // "Pin to taskbar" work without a Start-menu shortcut carrying a matching ID.
     {
         QSurfaceFormat fmt;
         fmt.setDepthBufferSize(24);

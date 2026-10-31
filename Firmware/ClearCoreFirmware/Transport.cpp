@@ -653,6 +653,16 @@ const char *TransportOrigin() {
     return nullptr;
 }
 
+void TransportUsbDiag(void (*out)(const char *line)) {
+    char buf[320];
+    UsbPort.RxDebugLine(buf, sizeof(buf));
+    out(buf);
+    snprintf(buf, sizeof(buf), "usb channel: count=%u free=%u held=%u console=%d",
+             (unsigned)g_ch[CH_USB].Count(), (unsigned)g_ch[CH_USB].Free(), (unsigned)g_heldLen,
+             g_usbConsole ? 1 : 0);
+    out(buf);
+}
+
 void TransportStats(char *buf, size_t len) {
     snprintf(buf, len,
              "source=%s usb_in=%lu com=%s com_in=%lu com_overflow=%lu tcp_in=%lu tcp_jobs=%lu "

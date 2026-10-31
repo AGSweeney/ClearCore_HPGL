@@ -38,6 +38,7 @@ const char *TransportPen(bool down);
 const char *TransportOrigin();
 bool TransportJobActive();
 void TransportStats(char *buf, size_t len);
+void TransportUsbDiag(void (*out)(const char *line));
 const char *TransportIpString();
 void TransportRestart();
 

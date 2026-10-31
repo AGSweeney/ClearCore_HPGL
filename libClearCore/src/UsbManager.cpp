@@ -307,7 +307,7 @@ bool UsbManager::CBLineStateChanged(usb_cdc_control_signal_t state) {
         cdcdf_acm_register_callback(CDCDF_ACM_CB_READ, (FUNC_PTR)RxComplete);
         cdcdf_acm_register_callback(CDCDF_ACM_CB_WRITE, (FUNC_PTR)TxComplete);
         // Start Rx
-        cdcdf_acm_read(UsbMgr.m_usbReadBuf, sizeof(UsbMgr.m_usbReadBuf));
+        UsbMgr.ArmRead();
     }
     else {
         // Callbacks must be registered after endpoint allocation
@@ -325,7 +325,7 @@ bool UsbManager::CBLineStateChanged(usb_cdc_control_signal_t state) {
         if (UsbMgr.m_portOpen) {
             cdcdf_acm_register_callback(CDCDF_ACM_CB_READ, (FUNC_PTR)RxComplete);
             if (!UsbMgr.m_readBufAvail) {
-                cdcdf_acm_read(UsbMgr.m_usbReadBuf, sizeof(UsbMgr.m_usbReadBuf));
+                UsbMgr.ArmRead();
             }
         }
     }
@@ -349,7 +349,7 @@ void UsbManager::PortOpen() {
     cdcdf_acm_register_callback(CDCDF_ACM_CB_READ, (FUNC_PTR)RxComplete);
     cdcdf_acm_register_callback(CDCDF_ACM_CB_WRITE, (FUNC_PTR)TxComplete);
     // Start Rx
-    cdcdf_acm_read(m_usbReadBuf, sizeof(m_usbReadBuf));
+    ArmRead();
 }
 
 void UsbManager::PortClose() {
@@ -383,7 +383,7 @@ void UsbManager::FlushInput() {
     m_inTail = 0;
     m_readActive = false;
     m_readBufAvail = 0;
-    cdcdf_acm_read(m_usbReadBuf, sizeof(m_usbReadBuf));
+    ArmRead();
 }
 
 void UsbManager::WaitForWriteFinish() {
@@ -524,9 +524,13 @@ bool UsbManager::RxComplete(const uint8_t ep,
                             const enum usb_xfer_code rc,
                             const uint32_t count) {
     UNUSED(ep);
-    UNUSED(rc);
 
     __disable_irq();
+    UsbMgr.m_rxCompletions++;
+    UsbMgr.m_rxLastRc = (uint32_t)rc;
+    if (count == 0) {
+        UsbMgr.m_rxZeroLength++;
+    }
     // Make the Rx data available to be copied into the Rx ring buffer
     UsbMgr.m_readBufAvail = count;
     UsbMgr.m_readBufPtr = UsbMgr.m_usbReadBuf;
@@ -535,7 +539,7 @@ bool UsbManager::RxComplete(const uint8_t ep,
         // Zero-length packet (a host ends a transfer that is a multiple of 64 bytes with one, e.g.
         // Windows writing 512-byte blocks). Nothing to copy, so RxCopyToRingBuf would never
         // re-arm the read and USB input stopped for good. Re-arm here. (ClearHPGL change.)
-        cdcdf_acm_read(UsbMgr.m_usbReadBuf, sizeof(UsbMgr.m_usbReadBuf));
+        UsbMgr.ArmRead();
         return true;
     }
     UsbMgr.RxCopyToRingBuf();
@@ -545,6 +549,46 @@ void UsbManager::Refresh(void) {
     if (!m_sendActive && m_outHead != m_outTail) {
         TxPump();
     }
+}
+
+void UsbManager::ArmRead() {
+    m_rxArms++;
+    const int32_t err = cdcdf_acm_read(m_usbReadBuf, sizeof(m_usbReadBuf));
+    if (err != ERR_NONE) {
+        m_rxArmFails++;
+        m_rxLastArmError = err;
+    }
+}
+
+UsbManager::RxDebugInfo UsbManager::RxDebug() {
+    RxDebugInfo d;
+    __disable_irq();
+    d.completions = m_rxCompletions;
+    d.zeroLength = m_rxZeroLength;
+    d.arms = m_rxArms;
+    d.armFails = m_rxArmFails;
+    d.lastArmError = m_rxLastArmError;
+    d.lastRc = m_rxLastRc;
+    d.readBufAvail = m_readBufAvail;
+    d.ringAvail = AvailableForRead();
+    d.dtr = m_lineState.rs232.DTR;
+    d.portOpen = m_portOpen;
+    struct usb_d_ep_status st;
+    if (usb_d_ep_get_status(CONF_USB_CDCD_ACM_DATA_BULKOUT_EPADDR, &st) >= 0) {
+        d.epState = st.state;
+        d.epCount = st.count;
+        d.epSize = st.size;
+    } else {
+        d.epState = 0xff;
+        d.epCount = 0;
+        d.epSize = 0;
+    }
+    const uint8_t n = CONF_USB_CDCD_ACM_DATA_BULKOUT_EPADDR & 0x0f;
+    d.hwStatus = USB->DEVICE.DeviceEndpoint[n].EPSTATUS.reg;
+    d.hwIntFlag = USB->DEVICE.DeviceEndpoint[n].EPINTFLAG.reg;
+    d.hwCfg = USB->DEVICE.DeviceEndpoint[n].EPCFG.reg;
+    __enable_irq();
+    return d;
 }
 
 void UsbManager::RxCopyToRingBuf() {
@@ -585,7 +629,7 @@ void UsbManager::RxCopyToRingBuf() {
         // If all of the available input data has been copied into the
         // ring buffer, read more input data from the USB device
         if (!m_readBufAvail) {
-            cdcdf_acm_read(m_usbReadBuf, sizeof(m_usbReadBuf));
+            ArmRead();
         }
     }
     __enable_irq();

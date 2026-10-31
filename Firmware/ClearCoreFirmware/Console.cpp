@@ -179,6 +179,7 @@ bool ConsoleHandleLine(const char *lineIn, ConsoleOut out) {
         Reply(out, TransportPen(Eq(tok[1], "down")));
     } else if (Eq(cmd, "diag")) {
         PlotterDiag(out);
+        TransportUsbDiag(out);
         out("ok");
     } else if (Eq(cmd, "tel")) {
         if (n < 2) {

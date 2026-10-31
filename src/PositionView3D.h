@@ -36,6 +36,10 @@ public:
     void setPathIssues(const QVector<PathIssueMarker> &markers);
     /// Part of the cut path already drawn (plot progress), drawn green over the yellow plan.
     void setProgramProgress(const QVector<QVector<QVector3D>> &doneStrips);
+    /** Live pen trace: every pen-down position reported by the plotter, drawn green whatever
+     *  is loaded (jobs from any source, jogging with the pen down). */
+    void addPenTraceSample(float x, float y, bool penDown);
+    void clearPenTrace();
     // Legacy single-path overload kept for backward compatibility.
     void setProgramPath(const QVector<QVector3D> &points);
     void setPathTraceEnabled(bool on);
@@ -96,6 +100,8 @@ private:
     QVector<QVector<QVector3D>> m_cutStrips;     // one polyline per consecutive cut run
     QVector<QVector3D> m_rapidSegments;          // flat start/end pairs for G0 moves
     QVector<QVector<QVector3D>> m_doneStrips;    // plot progress (subset of the cut path)
+    QVector<QVector<QVector3D>> m_traceStrips;   // live pen-down trace, one strip per pen-down run
+    bool m_traceDown = false;                    // last sample was pen down (extends the last strip)
     QVector<PathIssueMarker> m_pathIssues;
     int m_hoverPathIssueIndex = -1;
     QString m_droOverlayText;

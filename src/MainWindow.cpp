@@ -309,6 +309,7 @@ void MainWindow::BuildUi() {
     m_toggleLogAction->setChecked(true);
     m_toggleLogAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
     viewMenu->addAction(m_toggleLogAction);
+    viewMenu->addAction("Clear pen trace", this, [this]() { m_positionView3D->clearPenTrace(); });
     connect(m_toggleLogAction, &QAction::toggled, this, [this](bool on) { SetLogPanelVisible(on); });
 
     auto *central = new QWidget(this);
@@ -930,6 +931,7 @@ void MainWindow::UpdatePenView(const PlotterLink::Status &s) {
                                             .arg(s.yMm, 0, 'f', 3)
                                             .arg(s.penDown ? "down" : "up"));
     m_positionView3D->setToolPosition(float(s.xMm), float(s.yMm), s.penDown ? 0.f : kPenUpVizZ);
+    m_positionView3D->addPenTraceSample(float(s.xMm), float(s.yMm), s.penDown);
 }
 
 // Fast path (~40/s): pen marker, readout and progress only. Buttons, faults and job
@@ -949,15 +951,21 @@ void MainWindow::TrackExternalJob(const PlotterLink::Status &s, bool faulted) {
     const bool foreign = s.source == QLatin1String("usb") || s.source == QLatin1String("com");
     const bool busy = s.state == QLatin1String("plotting") || s.state == QLatin1String("paused") || s.queue > 0;
     if (!m_externalJob) {
-        if (foreign && busy && !m_jobSending && !m_jobAwaitingFinish && m_source != SourceKind::None) {
+        if (foreign && busy && !m_jobSending && !m_jobAwaitingFinish) {
             m_externalJob = true;
             m_externalSource = s.source.toUpper();
             ResetProgress();
-            m_progress->setFormat("%p% drawn");
+            m_positionView3D->clearPenTrace();
             m_progress->setValue(0);
             StartCycleTimer();
-            AppendLog(QStringLiteral("Following a plot sent over %1 (progress assumes it is %2)")
-                          .arg(m_externalSource, QFileInfo(m_sourcePath).fileName()));
+            if (m_source != SourceKind::None) {
+                m_progress->setFormat("%p% drawn");
+                AppendLog(QStringLiteral("Following a plot sent over %1 (progress assumes it is %2)")
+                              .arg(m_externalSource, QFileInfo(m_sourcePath).fileName()));
+            } else {
+                m_progress->setFormat(QStringLiteral("Plotting over %1").arg(m_externalSource));
+                AppendLog(QStringLiteral("Following a plot sent over %1").arg(m_externalSource));
+            }
         }
         return;
     }
@@ -1527,6 +1535,7 @@ void MainWindow::StartPlot() {
         return;
     }
     ResetProgress();
+    m_positionView3D->clearPenTrace();
     m_progress->setFormat("%p% sent");
     StartCycleTimer();
     m_jobSending = true;

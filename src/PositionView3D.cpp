@@ -192,6 +192,29 @@ void PositionView3D::setProgramProgress(const QVector<QVector<QVector3D>> &doneS
     update();
 }
 
+void PositionView3D::addPenTraceSample(float x, float y, bool penDown) {
+    if (!penDown) {
+        m_traceDown = false;
+        return;
+    }
+    const QVector3D p(x, y, 0.f);
+    if (!m_traceDown || m_traceStrips.isEmpty()) {
+        m_traceStrips.append(QVector<QVector3D>{p});
+        m_traceDown = true;
+    } else if ((m_traceStrips.last().last() - p).lengthSquared() >= 0.05f * 0.05f) {
+        m_traceStrips.last().append(p);  // skip samples closer than 0.05 mm (pen at rest)
+    } else {
+        return;
+    }
+    update();
+}
+
+void PositionView3D::clearPenTrace() {
+    m_traceStrips.clear();
+    m_traceDown = false;
+    update();
+}
+
 void PositionView3D::setPathIssues(const QVector<PathIssueMarker> &markers) {
     if (samePathIssues(m_pathIssues, markers)) {
         return;
@@ -427,21 +450,25 @@ void PositionView3D::drawProgramPath() {
 
 void PositionView3D::drawProgress() {
     QOpenGLFunctions_2_1 *f = gl21();
-    if (!f || m_doneStrips.isEmpty()) {
+    if (!f || (m_doneStrips.isEmpty() && m_traceStrips.isEmpty())) {
         return;
     }
     f->glDisable(GL_LIGHTING);
     f->glColor3f(0.25f, 0.9f, 0.45f);
     f->glLineWidth(2.8f);
-    for (const QVector<QVector3D> &strip : m_doneStrips) {
-        if (strip.size() < 2) {
-            continue;
+    // Plan progress (exact geometry of the loaded job) and the live pen trace (where the pen
+    // actually went while down) share the colour; with a job loaded they overlap.
+    for (const auto *strips : {&m_doneStrips, &m_traceStrips}) {
+        for (const QVector<QVector3D> &strip : *strips) {
+            if (strip.size() < 2) {
+                continue;
+            }
+            f->glBegin(GL_LINE_STRIP);
+            for (const QVector3D &p : strip) {
+                f->glVertex3f(p.x(), p.y(), p.z() + 0.01f);
+            }
+            f->glEnd();
         }
-        f->glBegin(GL_LINE_STRIP);
-        for (const QVector3D &p : strip) {
-            f->glVertex3f(p.x(), p.y(), p.z() + 0.01f);
-        }
-        f->glEnd();
     }
 }
 

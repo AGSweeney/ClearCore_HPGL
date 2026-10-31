@@ -685,6 +685,7 @@ void MainWindow::SetConnectedUi(bool connected) {
                              : QStringLiteral("ClearHPGL [Disconnected]"));
     if (!connected) {
         m_stateLabel->setText("Not connected");
+        SetSheet(m_stateLabel, QStringLiteral("QLabel { color: #e6ebf3; border-color: #3a414c; }"));
         PlaceStateOverlay();
         m_positionView3D->setDroOverlayText(QStringLiteral("Not connected"));
     }
@@ -875,9 +876,10 @@ void MainWindow::OnStatus(const PlotterLink::Status &s) {
         text += QStringLiteral(" · FAULT: %1").arg(s.fault);
     }
     m_stateLabel->setText(text);
+    // Both states set explicitly: clearing the sheet to "" left the fault colours on the overlay.
     SetSheet(m_stateLabel, faulted || s.estop == QLatin1String("open")
                                     ? QStringLiteral("QLabel { color: #ffcdd2; border-color: #c62828; }")
-                                    : QString());
+                                    : QStringLiteral("QLabel { color: #e6ebf3; border-color: #3a414c; }"));
     PlaceStateOverlay();
     UpdatePenView(s);
 

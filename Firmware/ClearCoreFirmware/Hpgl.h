@@ -69,6 +69,11 @@ public:
 
     HpglInterpreter();
     void Init(HpglSink *sink, double hardWidthPu, double hardHeightPu, const char *ident);
+    /** True for models whose plotter-unit origin is the centre of the sheet: the large-format
+     *  758x and DraftMaster 759x. Their drivers (e.g. AutoCAD's) send coordinates around 0,0
+     *  at the middle; the 7475A / 7550A put 0,0 at the lower-left. Chosen by the ident. */
+    static bool CenterOriginModel(const char *ident);
+    bool CenterOrigin() const { return m_centerOrigin; }
     /* Takes effect at the next IN (and immediately for clamping). */
     void SetHardClip(double widthPu, double heightPu);
     void SetIdentification(const char *ident);
@@ -145,6 +150,8 @@ private:
     Pt LogicalToPhysical(Pt p) const;
     Pt PhysicalToLogical(Pt p) const;
     double LogicalWidth() const;
+    /** Where plotter-unit 0,0 sits in the internal (0..width, 0..height) frame. */
+    Pt Origin() const;
     double LogicalHeight() const;
     Pt ClampHard(Pt p) const;
     Pt CurrentUser() const;
@@ -169,6 +176,7 @@ private:
 
     HpglSink *m_sink;
     char m_ident[16];
+    bool m_centerOrigin = false;
     double m_hardW;
     double m_hardH;
 

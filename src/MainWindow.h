@@ -85,6 +85,11 @@ private:
     void LoadHpgl(const QString &path);
     QByteArray JobHpgl() const;
     QVector<QVector<QVector3D>> PlacedDxfStrips() const;
+    // The board's model ("ident") and whether it puts plotter 0,0 at the bed centre (DraftMaster).
+    QByteArray DeviceIdent() const;
+    bool DeviceCenterOrigin() const;
+    // DXF strips in the plotter's coordinate frame (bed coordinates, shifted for a centre origin).
+    QVector<QVector<QVector3D>> JobDxfStrips() const;
     QVector3D DxfPlacementOffset() const;
     void RebuildPreview();
     void UpdatePlotInfo();

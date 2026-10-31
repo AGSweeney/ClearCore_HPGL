@@ -59,11 +59,11 @@ private:
 
 } // namespace
 
-HpglPreviewResult PreviewHpgl(const QByteArray &hpgl, double plotWidthMm, double plotHeightMm) {
+HpglPreviewResult PreviewHpgl(const QByteArray &hpgl, double plotWidthMm, double plotHeightMm, const char *ident) {
     HpglPreviewResult result;
     PreviewSink sink(&result);
     HpglInterpreter interp;
-    interp.Init(&sink, plotWidthMm * HPGL_PU_PER_MM, plotHeightMm * HPGL_PU_PER_MM, "7475A");
+    interp.Init(&sink, plotWidthMm * HPGL_PU_PER_MM, plotHeightMm * HPGL_PU_PER_MM, ident);
     for (const char c : hpgl) {
         interp.Feed(uint8_t(c));
         sink.byte++;

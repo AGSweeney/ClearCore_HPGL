@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "DxfImport.h"
+#include "Hpgl.h"
 #include "HpglPreview.h"
 #include "PathGapBridge.h"
 #include "PathVizIssues.h"
@@ -1158,13 +1159,35 @@ QVector<QVector<QVector3D>> MainWindow::PlacedDxfStrips() const {
     return out;
 }
 
+QByteArray MainWindow::DeviceIdent() const {
+    const QString id = m_deviceConfig.value("ident").trimmed();
+    return id.isEmpty() ? QByteArray("7475A") : id.toLatin1();
+}
+
+bool MainWindow::DeviceCenterOrigin() const {
+    return HpglInterpreter::CenterOriginModel(DeviceIdent().constData());
+}
+
+QVector<QVector<QVector3D>> MainWindow::JobDxfStrips() const {
+    QVector<QVector<QVector3D>> strips = PlacedDxfStrips();
+    if (DeviceCenterOrigin()) {
+        const QVector3D c(float(m_plotWidthMm / 2.0), float(m_plotHeightMm / 2.0), 0.f);
+        for (auto &strip : strips) {
+            for (QVector3D &p : strip) {
+                p -= c;
+            }
+        }
+    }
+    return strips;
+}
+
 QByteArray MainWindow::JobHpgl() const {
     if (m_source == SourceKind::Hpgl) {
         return m_hpglFile;
     }
     if (m_source == SourceKind::Dxf) {
         /* End with the pen raised and put away, as plotter drivers do. */
-        return BuildHpglFromPolylinesMm(PlacedDxfStrips()).toLatin1() + "\nPU;SP0;\n";
+        return BuildHpglFromPolylinesMm(JobDxfStrips()).toLatin1() + "\nPU;SP0;\n";
     }
     return QByteArray();
 }
@@ -1193,12 +1216,12 @@ void MainWindow::RebuildPreview() {
                               &m_previewRapidsMm, &markers);
         /* JobHpgl() starts with exactly this text: one PD instruction per strip. */
         QVector<int> pdOffsets;
-        BuildHpglFromPolylinesMm(m_previewStripsMm, &pdOffsets);
+        BuildHpglFromPolylinesMm(JobDxfStrips(), &pdOffsets);
         for (int s = 0; s < m_previewStripsMm.size(); s++) {
             m_previewVertexBytes.append(QVector<int>(m_previewStripsMm[s].size(), pdOffsets.value(s, -1)));
         }
     } else if (m_source == SourceKind::Hpgl) {
-        const HpglPreviewResult r = PreviewHpgl(m_hpglFile, m_plotWidthMm, m_plotHeightMm);
+        const HpglPreviewResult r = PreviewHpgl(m_hpglFile, m_plotWidthMm, m_plotHeightMm, DeviceIdent().constData());
         m_previewStripsMm = r.cutStripsMm;
         m_previewRapidsMm = r.rapidSegmentsMm;
         m_previewVertexBytes = r.cutStripBytes;

@@ -23,4 +23,6 @@ struct HpglPreviewResult {
     int lastError = 0;
 };
 
-HpglPreviewResult PreviewHpgl(const QByteArray &hpgl, double plotWidthMm, double plotHeightMm);
+/// ident: the board's model (its "ident" setting); 758x/759x put plotter 0,0 at the bed centre.
+HpglPreviewResult PreviewHpgl(const QByteArray &hpgl, double plotWidthMm, double plotHeightMm,
+                              const char *ident = "7475A");

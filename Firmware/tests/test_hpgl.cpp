@@ -189,6 +189,41 @@ static void TestRotation() {
     CHECK_EQ_STR(f.sink.Joined(), "M0,12000 M0,11900");
 }
 
+static void TestCenterOrigin() {
+    printf("centre origin (DraftMaster ident)\n");
+    CHECK(HpglInterpreter::CenterOriginModel("7596A"));
+    CHECK(HpglInterpreter::CenterOriginModel("7586B"));
+    CHECK(!HpglInterpreter::CenterOriginModel("7475A"));
+    CHECK(!HpglInterpreter::CenterOriginModel("7550A"));
+    MockSink sink;
+    HpglInterpreter h;
+    h.Init(&sink, kW, kH, "7596A");
+    /* AutoCAD's DraftMaster output: 0,0 is the middle of the bed */
+    FeedAll(h, "IN;PU0,0;PU-8000,-6000;PU8000,6000;");
+    CHECK_EQ_STR(sink.Joined(), "M8000,6000 M0,0 M16000,12000");
+    sink.Clear();
+    FeedAll(h, "OH;OP;");
+    CHECK(sink.replies.size() == 2 && sink.replies[0] == "-8000,-6000,8000,6000" &&
+          sink.replies[1] == "-8000,-6000,8000,6000");
+    sink.Clear();
+    FeedAll(h, "PA100,-200;OA;");
+    CHECK(sink.replies.size() == 1 && sink.replies[0] == "100,-200,0");
+    sink.Clear();
+    /* IW is in the same frame: a window around the centre clips a line through it */
+    FeedAll(h, "IW-1000,-1000,1000,1000;PU-2000,0;PD2000,0;PU;IW;");
+    CHECK_EQ_STR(sink.Joined(), "M6000,6000 M7000,6000 D M9000,6000 U");
+    sink.Clear();
+    /* rotation turns about the centre */
+    FeedAll(h, "RO90;PU0,0;");
+    CHECK_EQ_STR(sink.Joined(), "M8000,6000");
+    sink.Clear();
+    /* switching back to a lower-left model restores the old frame */
+    h.SetIdentification("7475A");
+    FeedAll(h, "IN;PU0,0;OH;");
+    CHECK_EQ_STR(sink.Joined(), "M0,0");
+    CHECK(sink.replies.size() == 1 && sink.replies[0] == "0,0,16000,12000");
+}
+
 static void TestCircle() {
     printf("CI\n");
     Fixture f;
@@ -478,6 +513,7 @@ int main() {
     TestHardClipClamp();
     TestWindowClip();
     TestRotation();
+    TestCenterOrigin();
     TestCircle();
     TestSmallCircleMinChord();
     TestArcs();

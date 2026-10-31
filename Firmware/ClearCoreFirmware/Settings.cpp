@@ -241,7 +241,7 @@ static const KeyDef kKeys[] = {
     {"ip", K_IP, OFS(ip), 0, 0, KF_RESTART, "static address"},
     {"netmask", K_IP, OFS(netmask), 0, 0, KF_RESTART, "static netmask"},
     {"gateway", K_IP, OFS(gateway), 0, 0, KF_RESTART, "static gateway"},
-    {"ident", K_STR, OFS(ident), 0, 0, KF_LIVE, "OI reply (e.g. 7475A, 7550A)"},
+    {"ident", K_STR, OFS(ident), 0, 0, KF_LIVE, "OI reply; 758x/759x (DraftMaster) put 0,0 at bed centre"},
 };
 
 static const uint16_t kKeyCount = (uint16_t)(sizeof(kKeys) / sizeof(kKeys[0]));

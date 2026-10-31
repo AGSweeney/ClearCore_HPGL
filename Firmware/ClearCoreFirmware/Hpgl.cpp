@@ -145,6 +145,18 @@ void HpglInterpreter::SetHardClip(double widthPu, double heightPu) {
 void HpglInterpreter::SetIdentification(const char *ident) {
     strncpy(m_ident, ident ? ident : "7475A", sizeof(m_ident) - 1);
     m_ident[sizeof(m_ident) - 1] = '\0';
+    m_centerOrigin = CenterOriginModel(m_ident);
+}
+
+bool HpglInterpreter::CenterOriginModel(const char *ident) {
+    return ident && ident[0] == '7' && ident[1] == '5' && (ident[2] == '8' || ident[2] == '9');
+}
+
+HpglInterpreter::Pt HpglInterpreter::Origin() const {
+    Pt o;
+    o.x = m_centerOrigin ? LogicalWidth() / 2.0 : 0.0;
+    o.y = m_centerOrigin ? LogicalHeight() / 2.0 : 0.0;
+    return o;
 }
 
 void HpglInterpreter::Initialize() {
@@ -247,8 +259,9 @@ void HpglInterpreter::RecalcScale() {
 HpglInterpreter::Pt HpglInterpreter::UserToPu(double ux, double uy) const {
     Pt p;
     if (!m_scaleOn) {
-        p.x = ux;
-        p.y = uy;
+        const Pt o = Origin();
+        p.x = ux + o.x;
+        p.y = uy + o.y;
         return p;
     }
     p.x = m_scOrigin.x + (ux - m_ux0) * m_kx;
@@ -259,8 +272,9 @@ HpglInterpreter::Pt HpglInterpreter::UserToPu(double ux, double uy) const {
 HpglInterpreter::Pt HpglInterpreter::PuToUser(double px, double py) const {
     Pt u;
     if (!m_scaleOn || fabs(m_kx) < 1e-12 || fabs(m_ky) < 1e-12) {
-        u.x = px;
-        u.y = py;
+        const Pt o = Origin();
+        u.x = px - o.x;
+        u.y = py - o.y;
         return u;
     }
     u.x = m_ux0 + (px - m_scOrigin.x) / m_kx;
@@ -857,17 +871,19 @@ void HpglInterpreter::Execute() {
         if (n == 0) {
             DefaultP1P2();
         } else if (n == 2) {
+            const Pt o = Origin();
             const double dx = m_p2.x - m_p1.x;
             const double dy = m_p2.y - m_p1.y;
-            m_p1.x = p[0];
-            m_p1.y = p[1];
-            m_p2.x = p[0] + dx;
-            m_p2.y = p[1] + dy;
+            m_p1.x = p[0] + o.x;
+            m_p1.y = p[1] + o.y;
+            m_p2.x = m_p1.x + dx;
+            m_p2.y = m_p1.y + dy;
         } else if (n == 4) {
-            m_p1.x = p[0];
-            m_p1.y = p[1];
-            m_p2.x = p[2];
-            m_p2.y = p[3];
+            const Pt o = Origin();
+            m_p1.x = p[0] + o.x;
+            m_p1.y = p[1] + o.y;
+            m_p2.x = p[2] + o.x;
+            m_p2.y = p[3] + o.y;
         } else {
             SetError(HPGL_ERR_PARAM_COUNT);
             return;
@@ -935,10 +951,11 @@ void HpglInterpreter::Execute() {
         if (n == 0) {
             m_windowOn = false;
         } else if (n == 4) {
-            m_winLo.x = fmin(p[0], p[2]);
-            m_winLo.y = fmin(p[1], p[3]);
-            m_winHi.x = fmax(p[0], p[2]);
-            m_winHi.y = fmax(p[1], p[3]);
+            const Pt o = Origin();
+            m_winLo.x = fmin(p[0], p[2]) + o.x;
+            m_winLo.y = fmin(p[1], p[3]) + o.y;
+            m_winHi.x = fmax(p[0], p[2]) + o.x;
+            m_winHi.y = fmax(p[1], p[3]) + o.y;
             m_windowOn = true;
         } else {
             SetError(HPGL_ERR_PARAM_COUNT);
@@ -1138,7 +1155,8 @@ void HpglInterpreter::Execute() {
         q.x = x;
         q.y = y;
         const Pt l = PhysicalToLogical(q);
-        ReplyF("%ld,%ld,%d", RoundToLong(l.x), RoundToLong(l.y), down ? 1 : 0);
+        const Pt o = Origin();
+        ReplyF("%ld,%ld,%d", RoundToLong(l.x - o.x), RoundToLong(l.y - o.y), down ? 1 : 0);
         return;
     }
     if (Is(m, "OC")) {
@@ -1150,22 +1168,27 @@ void HpglInterpreter::Execute() {
         return;
     }
     if (Is(m, "OP")) {
-        ReplyF("%ld,%ld,%ld,%ld", RoundToLong(m_p1.x), RoundToLong(m_p1.y), RoundToLong(m_p2.x),
-               RoundToLong(m_p2.y));
+        const Pt o = Origin();
+        ReplyF("%ld,%ld,%ld,%ld", RoundToLong(m_p1.x - o.x), RoundToLong(m_p1.y - o.y),
+               RoundToLong(m_p2.x - o.x), RoundToLong(m_p2.y - o.y));
         m_p1p2Changed = false;
         return;
     }
     if (Is(m, "OH")) {
-        ReplyF("0,0,%ld,%ld", RoundToLong(LogicalWidth()), RoundToLong(LogicalHeight()));
+        const Pt o = Origin();
+        ReplyF("%ld,%ld,%ld,%ld", RoundToLong(-o.x), RoundToLong(-o.y), RoundToLong(LogicalWidth() - o.x),
+               RoundToLong(LogicalHeight() - o.y));
         return;
     }
     if (Is(m, "OW")) {
+        const Pt o = Origin();
         if (m_windowOn) {
-            ReplyF("%ld,%ld,%ld,%ld", RoundToLong(fmax(0, m_winLo.x)), RoundToLong(fmax(0, m_winLo.y)),
-                   RoundToLong(fmin(LogicalWidth(), m_winHi.x)),
-                   RoundToLong(fmin(LogicalHeight(), m_winHi.y)));
+            ReplyF("%ld,%ld,%ld,%ld", RoundToLong(fmax(0, m_winLo.x) - o.x), RoundToLong(fmax(0, m_winLo.y) - o.y),
+                   RoundToLong(fmin(LogicalWidth(), m_winHi.x) - o.x),
+                   RoundToLong(fmin(LogicalHeight(), m_winHi.y) - o.y));
         } else {
-            ReplyF("0,0,%ld,%ld", RoundToLong(LogicalWidth()), RoundToLong(LogicalHeight()));
+            ReplyF("%ld,%ld,%ld,%ld", RoundToLong(-o.x), RoundToLong(-o.y), RoundToLong(LogicalWidth() - o.x),
+                   RoundToLong(LogicalHeight() - o.y));
         }
         return;
     }

@@ -12,6 +12,8 @@ Hpgl.cpp
 
 HpglChannel.cpp
 
+JobOptimizer.cpp
+
 Plotter.cpp
 
 Settings.cpp

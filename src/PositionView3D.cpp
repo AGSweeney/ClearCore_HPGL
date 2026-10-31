@@ -142,6 +142,15 @@ void PositionView3D::setGridCellStep(float cellStep) {
     update();
 }
 
+void PositionView3D::setBedSize(float widthMm, float heightMm) {
+    if (widthMm <= 0.0f || heightMm <= 0.0f || (widthMm == m_bedW && heightMm == m_bedH)) {
+        return;
+    }
+    m_bedW = widthMm;
+    m_bedH = heightMm;
+    update();
+}
+
 void PositionView3D::setDroInches(bool inches) {
     if (m_droInches == inches) {
         return;
@@ -251,10 +260,10 @@ void PositionView3D::resetView() {
                 hi.setY(qMax(hi.y(), p.y()));
             }
         }
-        m_viewPan = (lo.x() <= hi.x()) ? (lo + hi) * 0.5f : QVector3D(m_x, m_y, m_z);
+        m_viewPan = (lo.x() <= hi.x()) ? (lo + hi) * 0.5f : QVector3D(m_bedW * 0.5f, m_bedH * 0.5f, 0.f);
     }
-    // ~20" or ~500 mm: fits a 24" floor without the camera being miles away (200 was 200" in G20).
-    m_distance = 20.0f * m_gridCellStep;
+    // Far enough to see the whole bed.
+    m_distance = qBound(0.3f * m_gridCellStep, 1.4f * qMax(m_bedW, m_bedH), 120.0f * m_gridCellStep);
     update();
 }
 
@@ -322,12 +331,10 @@ void PositionView3D::paintGL() {
     f->glMatrixMode(GL_MODELVIEW);
     f->glLoadMatrixf(view.constData());
 
-    // Floor: fixed 24" × 24" in machine space (±12" from world origin; grid lines every 1").
+    // Floor: the plot bed, 0..width × 0..height from the origin.
     const float s = m_gridCellStep;
-    static constexpr float kHalfFloorInches = 12.0f; // 24" total span per axis
-    const float halfFloor = kHalfFloorInches * s;
     f->glDisable(GL_LIGHTING);
-    drawGrid(halfFloor);
+    drawGrid();
     const float axLen = 2.5f * s; // short RGB axis ticks (~2.5" / ~63 mm)
     drawAxes(axLen);
     if (m_pathTraceEnabled && (!m_cutStrips.isEmpty() || m_programPath.size() >= 2)) {
@@ -461,29 +468,44 @@ void PositionView3D::drawPathIssueMarkers() {
     f->glEnable(GL_DEPTH_TEST);
 }
 
-void PositionView3D::drawGrid(float halfExtent) {
+void PositionView3D::drawGrid() {
     QOpenGLFunctions_2_1 *f = gl21();
     if (!f) {
         return;
     }
-    const float step = m_gridCellStep;
-    if (step <= 0.0f) {
-        return;
-    }
-    const int n = int(std::ceil(double(halfExtent) / double(step))) + 1;
-    f->glColor3f(0.32f, 0.35f, 0.4f);
-    f->glLineWidth(1.0f);
-    f->glBegin(GL_LINES);
-    for (int k = -n; k <= n; ++k) {
-        const float t = float(k) * step;
-        if (t < -halfExtent || t > halfExtent) {
-            continue;
+    const float w = m_bedW;
+    const float h = m_bedH;
+    // Lines every 10 mm, brighter every 50 mm, counted from the origin; the bed edge is the outline.
+    static constexpr float kMinor = 10.0f;
+    static constexpr int kMajorEvery = 5;
+    auto lines = [&](bool major) {
+        f->glBegin(GL_LINES);
+        for (int k = 1; float(k) * kMinor < w - 0.01f; ++k) {
+            if ((k % kMajorEvery == 0) == major) {
+                f->glVertex3f(float(k) * kMinor, 0.0f, 0.0f);
+                f->glVertex3f(float(k) * kMinor, h, 0.0f);
+            }
         }
-        f->glVertex3f(t, -halfExtent, 0.0f);
-        f->glVertex3f(t, halfExtent, 0.0f);
-        f->glVertex3f(-halfExtent, t, 0.0f);
-        f->glVertex3f(halfExtent, t, 0.0f);
-    }
+        for (int k = 1; float(k) * kMinor < h - 0.01f; ++k) {
+            if ((k % kMajorEvery == 0) == major) {
+                f->glVertex3f(0.0f, float(k) * kMinor, 0.0f);
+                f->glVertex3f(w, float(k) * kMinor, 0.0f);
+            }
+        }
+        f->glEnd();
+    };
+    f->glLineWidth(1.0f);
+    f->glColor3f(0.12f, 0.135f, 0.155f);
+    lines(false);
+    f->glColor3f(0.32f, 0.35f, 0.4f);
+    lines(true);
+    f->glLineWidth(1.5f);
+    f->glColor3f(0.55f, 0.6f, 0.68f);
+    f->glBegin(GL_LINE_LOOP);
+    f->glVertex3f(0.0f, 0.0f, 0.0f);
+    f->glVertex3f(w, 0.0f, 0.0f);
+    f->glVertex3f(w, h, 0.0f);
+    f->glVertex3f(0.0f, h, 0.0f);
     f->glEnd();
 }
 

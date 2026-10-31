@@ -23,6 +23,8 @@ public:
     void setToolPosition(float x, float y, float z);
     // Line spacing in the same machine units as the DRO (1.0 = 1 in, 25.4 = 1 in when DRO is mm).
     void setGridCellStep(float cellStep);
+    /** Plot bed in mm: the grid covers 0..width × 0..height, anchored at the origin. */
+    void setBedSize(float widthMm, float heightMm);
     // Arrow sizes are derived from "mm" design sizes; DRO in inches must scale 1/25.4 to stay small on screen.
     void setDroInches(bool inches);
     // Cutting polylines and rapid segments from GCodeProgramKinematics.
@@ -71,7 +73,7 @@ private:
     void computeClipFromWorld(QMatrix4x4 *clipFromWorld) const;
     int pathIssueIndexAt(const QPoint &widgetPos) const;
     void updatePathIssueHover(const QPoint &widgetPos);
-    void drawGrid(float halfExtent);
+    void drawGrid();
     void drawAxes(float length);
     void drawProgramPath();
     void drawProgress();
@@ -86,6 +88,8 @@ private:
     float m_elDeg = 30.0f;
     float m_distance = 508.0f; // ~20" at 25.4 mm/DRO unit; rescaled in setGridCellStep
     float m_gridCellStep = 25.4f; // 1" in mm; MainWindow overwrites
+    float m_bedW = 400.0f;        // plot bed, mm (MainWindow sets it from the plotter config)
+    float m_bedH = 300.0f;
     bool m_droInches = false; // if true, 1.0 in DRO = 1" (not 1 mm) — must scale tool glyph
     bool m_pathTraceEnabled = false;
     QVector<QVector3D> m_programPath;            // legacy flat path

@@ -593,6 +593,8 @@ void MainWindow::BuildUi() {
     pos3dOuter->addLayout(pos3dHeader);
     m_positionView3D = new PositionView3D(pos3dGroup);
     m_positionView3D->setDroInches(false);
+    m_positionView3D->setBedSize(float(m_plotWidthMm), float(m_plotHeightMm));
+    m_positionView3D->resetView();
     // Plotter state overlaid on the viewport (bottom-left) so its changing width never resizes a panel.
     m_stateLabel = new QLabel("Not connected", m_positionView3D);
     m_stateLabel->setObjectName("ClearHpglState");
@@ -961,6 +963,7 @@ void MainWindow::ApplyDeviceConfig(const QStringList &lines) {
         AppSettings().setValue("plotter/heightMm", h);
         AppendLog(QStringLiteral("Plot area from plotter: %1 x %2 mm").arg(w).arg(h));
     }
+    m_positionView3D->setBedSize(float(m_plotWidthMm), float(m_plotHeightMm));
     RebuildPreview();
 }
 

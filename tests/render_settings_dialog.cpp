@@ -32,8 +32,8 @@ int main(int argc, char **argv) {
                 x0 = qMin(x0, p.x()); y0 = qMin(y0, p.y()); x1 = qMax(x1, p.x()); y1 = qMax(y1, p.y());
             }
         }
-        std::printf("strokes=%d drawn=%.0f mm  extent X %.1f..%.1f  Y %.1f..%.1f mm  unknown=%u error=%d\n",
-                    int(r.cutStripsMm.size()), r.drawLengthMm, x0, x1, y0, y1, r.unknownInstructions, r.lastError);
+        std::printf("strokes=%d drawn=%.0f mm  pen-up travel=%.0f mm  extent X %.1f..%.1f  Y %.1f..%.1f mm  unknown=%u error=%d\n",
+                    int(r.cutStripsMm.size()), r.drawLengthMm, r.travelLengthMm, x0, x1, y0, y1, r.unknownInstructions, r.lastError);
         return 0;
     }
     if (QString::fromLocal8Bit(argv[1]) == QLatin1String("--main")) {

@@ -283,6 +283,12 @@
     <Compile Include="HpglChannel.h">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="JobOptimizer.cpp">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="JobOptimizer.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="Plotter.cpp">
       <SubType>compile</SubType>
     </Compile>

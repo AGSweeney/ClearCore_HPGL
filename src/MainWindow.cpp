@@ -950,7 +950,8 @@ void MainWindow::OnTelemetry(const PlotterLink::Status &s) {
  * the host's data does not end it early. */
 void MainWindow::TrackExternalJob(const PlotterLink::Status &s, bool faulted) {
     const bool foreign = s.source == QLatin1String("usb") || s.source == QLatin1String("com");
-    const bool busy = s.state == QLatin1String("plotting") || s.state == QLatin1String("paused") || s.queue > 0;
+    const bool busy = s.state == QLatin1String("plotting") || s.state == QLatin1String("paused") ||
+                      s.state == QLatin1String("buffering") || s.queue > 0;
     if (!m_externalJob) {
         if (foreign && busy && !m_jobSending && !m_jobAwaitingFinish) {
             m_externalJob = true;

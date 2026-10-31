@@ -6,6 +6,7 @@
 #include "CoordinatedMotionController.h"
 #include "PlotterConfig.h"
 #include "Settings.h"
+#include "Transport.h"
 
 #include <initializer_list>
 #include <math.h>
@@ -616,6 +617,9 @@ void PlotterPoll() {
 static const char *StateName() {
     if (g_fault) {
         return "fault";
+    }
+    if (TransportBuffering()) {
+        return "buffering";  /* receiving a job to reorder; plotting starts when it ends */
     }
     if (!g_enabled) {
         return (g_count > 0) ? "waiting_enable" : "disabled";

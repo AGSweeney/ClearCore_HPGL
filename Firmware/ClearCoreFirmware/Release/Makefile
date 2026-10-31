@@ -43,6 +43,7 @@ C_SRCS +=  \
 ../Console.cpp \
 ../Hpgl.cpp \
 ../HpglChannel.cpp \
+../JobOptimizer.cpp \
 ../Plotter.cpp \
 ../Settings.cpp \
 ../Transport.cpp
@@ -53,6 +54,7 @@ ClearHPGL_Firmware.o \
 Console.o \
 Hpgl.o \
 HpglChannel.o \
+JobOptimizer.o \
 Plotter.o \
 Settings.o \
 Transport.o
@@ -63,6 +65,7 @@ ClearHPGL_Firmware.o \
 Console.o \
 Hpgl.o \
 HpglChannel.o \
+JobOptimizer.o \
 Plotter.o \
 Settings.o \
 Transport.o
@@ -73,6 +76,7 @@ ClearHPGL_Firmware.d \
 Console.d \
 Hpgl.d \
 HpglChannel.d \
+JobOptimizer.d \
 Plotter.d \
 Settings.d \
 Transport.d
@@ -83,6 +87,7 @@ ClearHPGL_Firmware.d \
 Console.d \
 Hpgl.d \
 HpglChannel.d \
+JobOptimizer.d \
 Plotter.d \
 Settings.d \
 Transport.d
@@ -135,6 +140,13 @@ Hpgl.o: ../Hpgl.cpp
 	
 
 HpglChannel.o: ../HpglChannel.cpp
+	@echo Building file: $<
+	@echo Invoking: ARM/GNU C Compiler : 6.3.1
+	$(QUOTE)C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\arm\arm-gnu-toolchain\bin\arm-none-eabi-g++.exe$(QUOTE) -mthumb -D__SAME53N19A__ -DNDEBUG  -I"C:\Program Files (x86)\Atmel\Studio\7.0\Packs\arm\CMSIS\4.5.0\CMSIS\Include" -I"C:\Program Files (x86)\Atmel\Studio\7.0\Packs\atmel\SAME53_DFP\1.1.118\include" -I"../../../libClearCore/inc" -I"../../../LwIP/LwIP/src/include" -I"../../../LwIP/LwIP/port/include" -I"C:\Program Files (x86)\Atmel\Studio\7.0\Packs\arm\CMSIS\5.4.0\CMSIS\Core\Include"  -O3 -ffunction-sections -fno-rtti -fno-exceptions -Wall -mcpu=cortex-m4 -c -mfloat-abi=hard -mfpu=fpv4-sp-d16 -MD -MP -MF "$(@:%.o=%.d)" -MT"$(@:%.o=%.d)" -MT"$(@:%.o=%.o)"   -o "$@" "$<" 
+	@echo Finished building: $<
+	
+
+JobOptimizer.o: ../JobOptimizer.cpp
 	@echo Building file: $<
 	@echo Invoking: ARM/GNU C Compiler : 6.3.1
 	$(QUOTE)C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\arm\arm-gnu-toolchain\bin\arm-none-eabi-g++.exe$(QUOTE) -mthumb -D__SAME53N19A__ -DNDEBUG  -I"C:\Program Files (x86)\Atmel\Studio\7.0\Packs\arm\CMSIS\4.5.0\CMSIS\Include" -I"C:\Program Files (x86)\Atmel\Studio\7.0\Packs\atmel\SAME53_DFP\1.1.118\include" -I"../../../libClearCore/inc" -I"../../../LwIP/LwIP/src/include" -I"../../../LwIP/LwIP/port/include" -I"C:\Program Files (x86)\Atmel\Studio\7.0\Packs\arm\CMSIS\5.4.0\CMSIS\Core\Include"  -O3 -ffunction-sections -fno-rtti -fno-exceptions -Wall -mcpu=cortex-m4 -c -mfloat-abi=hard -mfpu=fpv4-sp-d16 -MD -MP -MF "$(@:%.o=%.d)" -MT"$(@:%.o=%.d)" -MT"$(@:%.o=%.o)"   -o "$@" "$<" 

@@ -10,6 +10,7 @@ add_executable(test_hpgl
     test_hpgl.cpp
     ${FW_DIR}/Hpgl.cpp
     ${FW_DIR}/HpglChannel.cpp
+    ${FW_DIR}/JobOptimizer.cpp
 )
 target_include_directories(test_hpgl PRIVATE ${FW_DIR})
 if (MSVC)

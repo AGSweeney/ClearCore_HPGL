@@ -37,8 +37,11 @@ const char *TransportGoto(double xMm, double yMm);
 const char *TransportPen(bool down);
 const char *TransportOrigin();
 bool TransportJobActive();
+/* A job is being buffered for reordering (state "buffering"). */
+bool TransportBuffering();
 void TransportStats(char *buf, size_t len);
 void TransportUsbDiag(void (*out)(const char *line));
+void TransportOptimizerDiag(void (*out)(const char *line));
 const char *TransportIpString();
 void TransportRestart();
 

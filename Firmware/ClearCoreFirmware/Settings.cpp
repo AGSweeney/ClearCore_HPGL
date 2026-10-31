@@ -13,7 +13,7 @@
 /* User-page blob. Magic differs from ClearAI ('CAIC') and ClearCoreROS ('CROS')
  * so a blob left by either is ignored instead of misread. */
 static const uint32_t CHPGL_NVM_MAGIC = 0x47504843u; /* 'CHPG' */
-static const uint16_t CHPGL_NVM_VERSION = 1;
+static const uint16_t CHPGL_NVM_VERSION = 2;
 
 static_assert(sizeof(PlotterSettings) <= ClearCore::NvmManager::NVM_LOC_RESERVED_TEKNIC,
               "settings blob must fit below the Teknic reserved area");
@@ -64,6 +64,7 @@ void SettingsDefaults() {
     g_settings.zAccelSteps = 400000;
     g_settings.estopDi6 = 1;
     g_settings.autoEnable = 1;
+    g_settings.optimize = 3;  /* USB and COM: jobs from CAD drivers; the app orders its own */
     g_settings.hlfbCheck = 1;
     g_settings.comPort = 0;
     g_settings.comBaud = 9600;
@@ -129,6 +130,23 @@ void SettingsLoad() {
     Nvm().BlockRead(ClearCore::NvmManager::NVM_LOC_USER_START, (int)sizeof(raw), raw);
     PlotterSettings s;
     memcpy(&s, raw, sizeof(s));
+    if (s.magic == CHPGL_NVM_MAGIC && s.version == 1 && s.size == offsetof(PlotterSettings, optimize) + 4) {
+        /* Version 1 ended with ident then its checksum: keep those settings, add the new field.
+         * Saved as version 2 on the next "set". */
+        uint32_t v1Sum;
+        memcpy(&v1Sum, raw + offsetof(PlotterSettings, optimize), 4);
+        uint32_t h = 2166136261u;
+        for (size_t i = 0; i < offsetof(PlotterSettings, optimize); i++) {
+            h ^= raw[i];
+            h *= 16777619u;
+        }
+        if (h == v1Sum) {
+            s.optimize = 3;
+            s.version = CHPGL_NVM_VERSION;
+            s.size = sizeof(PlotterSettings);
+            s.checksum = Checksum(&s);
+        }
+    }
     if (s.magic != CHPGL_NVM_MAGIC || s.version != CHPGL_NVM_VERSION ||
         s.size != sizeof(PlotterSettings) || s.checksum != Checksum(&s)) {
         SettingsDefaults();
@@ -232,6 +250,7 @@ static const KeyDef kKeys[] = {
     {"z_accel_steps", K_U32, OFS(zAccelSteps), 1, 100000000, KF_DISABLED, "M2 acceleration (steps/s^2)"},
     {"estop_di6", K_U8, OFS(estopDi6), 0, 2, KF_LIVE, "0 off, 1 fault when DI-6 low, 2 fault when high"},
     {"auto_enable", K_U8, OFS(autoEnable), 0, 1, KF_LIVE, "enable motors when a job arrives"},
+    {"optimize", K_U8, OFS(optimize), 0, 7, KF_LIVE, "reorder jobs before plotting: 1 USB + 2 COM + 4 network"},
     {"hlfb_check", K_U8, OFS(hlfbCheck), 0, 1, KF_LIVE, "require HLFB asserted on enable"},
     {"com_port", K_U8, OFS(comPort), 0, 2, KF_RESTART, "serial plotter port: 0 off, 1 COM-0, 2 COM-1"},
     {"com_baud", K_U32, OFS(comBaud), 300, 1000000, KF_RESTART, "serial baud"},

@@ -6,6 +6,7 @@
 
 #include "Hpgl.h"
 #include "HpglChannel.h"
+#include "JobOptimizer.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -505,7 +506,188 @@ static void TestChannelOverflow() {
     CHECK_EQ_STR(io.out, "16\r");
 }
 
-int main() {
+/* Interpreter -> JobOptimizer -> MockSink, as on the board. Static: the optimizer's buffers are
+ * ~85 KB. */
+static JobOptimizer g_opt;
+
+struct OptFixture {
+    MockSink sink;
+    HpglInterpreter h;
+    explicit OptFixture(bool optimize) {
+        g_opt.Init(&sink);
+        g_opt.Abort();
+        h.Init(&g_opt, kW, kH, "7475A");
+        g_opt.BeginJob(optimize);
+    }
+    void Run(const char *job) {
+        for (const char *c = job; *c; c++) {
+            while (g_opt.Room() <= HpglInterpreter::kRoomReserve && g_opt.Busy()) {
+                g_opt.Pump();
+            }
+            h.Feed((uint8_t)*c);
+            while (h.Busy()) {
+                g_opt.Pump();
+                h.Pump();
+            }
+        }
+        g_opt.EndJob();
+        for (int i = 0; i < 100000 && g_opt.Busy(); i++) {
+            g_opt.Pump();
+        }
+    }
+    /* Pen-down runs in output order, as "x,y x,y ..." */
+    std::vector<std::string> Strokes() const {
+        std::vector<std::string> out;
+        std::string cur;
+        bool down = false;
+        std::string lastMove;
+        for (const std::string &e : sink.events) {
+            if (e == "D") {
+                down = true;
+                cur = lastMove.substr(1);
+            } else if (e == "U") {
+                if (down && !cur.empty()) out.push_back(cur);
+                down = false;
+                cur.clear();
+            } else if (e[0] == 'M') {
+                lastMove = e;
+                if (down) cur += " " + e.substr(1);
+            }
+        }
+        if (down && !cur.empty()) out.push_back(cur);
+        return out;
+    }
+};
+
+static void TestOptimizerReorders() {
+    printf("job optimizer: joins segments, hole before outline\n");
+    OptFixture f(true);
+    /* Outline 0..4000 as four separate segments (as AutoCAD sends it), then a hole inside. */
+    f.Run("IN;SP1;PU0,0;PD4000,0;PU;PU4000,0;PD4000,4000;PU;PU4000,4000;PD0,4000;PU;"
+          "PU0,4000;PD0,0;PU;PU1000,1000;PD2000,1000,2000,2000,1000,2000,1000,1000;PU;PA0,0;");
+    const std::vector<std::string> s = f.Strokes();
+    CHECK(s.size() == 2);
+    if (s.size() == 2) {
+        CHECK_EQ_STR(s[0], "1000,1000 2000,1000 2000,2000 1000,2000 1000,1000");  /* hole first */
+        /* outline joined into one closed path, entered at the corner nearest the hole's end */
+        CHECK_EQ_STR(s[1], "0,0 4000,0 4000,4000 0,4000 0,0");
+    }
+    CHECK(g_opt.LastStrokes() == 5 && g_opt.LastPaths() == 2);
+    /* the pen ends where the job did (PA0,0), pen up */
+    CHECK(f.sink.x == 0 && f.sink.y == 0 && !f.sink.down);
+    CHECK(!g_opt.Busy());
+}
+
+static void TestOptimizerOffPassesThrough() {
+    printf("job optimizer: off = unchanged\n");
+    const char *job = "IN;SP1;PU0,0;PD4000,0;PU;PU1000,1000;PD2000,1000;PU;";
+    OptFixture f(false);
+    f.Run(job);
+    Fixture direct;
+    FeedAll(direct.h, job);
+    CHECK_EQ_STR(f.sink.Joined(), direct.sink.Joined());
+}
+
+static void TestOptimizerPenGroups() {
+    printf("job optimizer: pen groups keep their order\n");
+    OptFixture f(true);
+    /* pen 1: far stroke then near; pen 2 after. Reordered within pen 1 only. */
+    f.Run("IN;SP1;PU8000,0;PD9000,0;PU;PU100,0;PD200,0;PU;SP2;PU5000,0;PD6000,0;PU;SP0;");
+    const std::vector<std::string> s = f.Strokes();
+    CHECK(s.size() == 3);
+    if (s.size() == 3) {
+        CHECK_EQ_STR(s[0], "100,0 200,0");
+        CHECK_EQ_STR(s[1], "8000,0 9000,0");
+        CHECK_EQ_STR(s[2], "6000,0 5000,0");  /* entered from the end nearer the pen (9000,0) */
+    }
+    CHECK(f.sink.pen == 0);
+}
+
+static void TestOptimizerSpill() {
+    printf("job optimizer: too big = as received, nothing lost\n");
+    OptFixture f(true);
+    /* 1000 strokes of 7 points each (more strokes and points than the buffer holds), sent in
+     * reverse position order: reordering would change the order, spilling must not. */
+    std::string job = "IN;SP1;";
+    char b[96];
+    const int n = 1000;
+    for (int i = n - 1; i >= 0; i--) {
+        const int x = 10 * i;
+        snprintf(b, sizeof(b), "PU%d,0;PD%d,10,%d,20,%d,30,%d,40,%d,50,%d,60;", x, x, x, x, x, x, x);
+        job += b;
+    }
+    job += "PU;";
+    f.Run(job.c_str());
+    const std::vector<std::string> s = f.Strokes();
+    CHECK(g_opt.LastOverflowed());
+    CHECK(s.size() == (size_t)n);
+    bool ordered = s.size() == (size_t)n;
+    for (int i = 0; ordered && i < n; i++) {
+        snprintf(b, sizeof(b), "%d,0 ", 10 * (n - 1 - i));
+        ordered = s[i].compare(0, strlen(b), b) == 0;
+    }
+    CHECK(ordered);
+}
+
+/* test_hpgl <file.plt> [ident]: run a job through interpreter + optimizer and report. */
+static int OptimizeFile(const char *path, const char *ident) {
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        printf("cannot open %s\n", path);
+        return 2;
+    }
+    std::string job;
+    char buf[4096];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), fp)) > 0) job.append(buf, n);
+    fclose(fp);
+    MockSink sink;
+    HpglInterpreter h;
+    g_opt.Init(&sink);
+    h.Init(&g_opt, kW, kH, ident);
+    g_opt.BeginJob(true);
+    for (char c : job) {
+        while (g_opt.Room() <= HpglInterpreter::kRoomReserve && g_opt.Busy()) g_opt.Pump();
+        h.Feed((uint8_t)c);
+        while (h.Busy()) { g_opt.Pump(); h.Pump(); }
+    }
+    h.Feed(';');
+    while (h.Busy()) { g_opt.Pump(); h.Pump(); }
+    g_opt.EndJob();
+    while (g_opt.Busy()) g_opt.Pump();
+    /* drawn length must not change: same lines, other order */
+    auto drawn = [](const MockSink &s) {
+        double len = 0, x = 0, y = 0;
+        bool down = false;
+        for (const std::string &e : s.events) {
+            if (e == "D") down = true;
+            else if (e == "U") down = false;
+            else if (e[0] == 'M') {
+                double nx = 0, ny = 0;
+                sscanf(e.c_str() + 1, "%lf,%lf", &nx, &ny);
+                if (down) len += hypot(nx - x, ny - y);
+                x = nx;
+                y = ny;
+            }
+        }
+        return len / 40.0;
+    };
+    MockSink direct;
+    HpglInterpreter hd;
+    hd.Init(&direct, kW, kH, ident);
+    FeedAll(hd, job.c_str(), job.size());
+    printf("drawn %.1f mm optimized vs %.1f mm as received\n", drawn(sink), drawn(direct));
+    printf("%s (%s): %u strokes -> %u paths, pen-up travel %.0f -> %.0f mm%s, end at %.0f,%.0f pen %s\n", path, ident,
+           (unsigned)g_opt.LastStrokes(), (unsigned)g_opt.LastPaths(), g_opt.LastTravelBeforeMm(),
+           g_opt.LastTravelAfterMm(), g_opt.LastOverflowed() ? " (overflow: as received)" : "", sink.x, sink.y,
+           sink.down ? "down" : "up");
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    if (argc > 1) {
+        return OptimizeFile(argv[1], argc > 2 ? argv[2] : "7475A");
+    }
     TestBasicPolyline();
     TestNoTerminatorsAndRelative();
     TestLowerCaseAndDecimals();
@@ -528,6 +710,10 @@ int main() {
     TestChannelXonXoff();
     TestChannelEnqAck();
     TestChannelOverflow();
+    TestOptimizerReorders();
+    TestOptimizerOffPassesThrough();
+    TestOptimizerPenGroups();
+    TestOptimizerSpill();
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

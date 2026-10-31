@@ -59,6 +59,9 @@ struct PlotterSettings {
     uint8_t gateway[4];
 
     char ident[12];      /* OI reply */
+
+    /* Added in version 2. */
+    uint8_t optimize;    /* reorder jobs before plotting: bit 0 USB, bit 1 COM, bit 2 network */
     uint32_t checksum;
 };
 #pragma pack(pop)

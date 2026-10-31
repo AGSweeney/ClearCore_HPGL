@@ -8,6 +8,7 @@
 #include "EthernetTcpServer.h"
 #include "EthernetUdp.h"
 #include "HpglChannel.h"
+#include "JobOptimizer.h"
 #include "Plotter.h"
 #include "PlotterConfig.h"
 #include "Settings.h"
@@ -38,6 +39,8 @@ static bool g_discard[CH_COUNT];
 static int g_active = -1;
 static bool g_resyncPending = false;
 static HpglInterpreter g_hpgl;
+static JobOptimizer g_opt;        /* between the interpreter and the plotter */
+static int g_optSource = -1;      /* channel whose job the optimizer holds */
 
 static SerialDriver *g_com = nullptr;
 
@@ -466,10 +469,16 @@ static void FeedInterpreter() {
     if (g_resyncPending) {
         return;
     }
+    g_opt.Pump();
+    if (g_opt.Replaying()) {
+        return;  /* the buffered job goes out first */
+    }
     if (g_active < 0) {
         for (int ch = 0; ch < CH_COUNT; ch++) {
             if (g_ch[ch].Count() > 0) {
                 g_active = ch;
+                g_optSource = ch;
+                g_opt.BeginJob((g_settings.optimize >> ch) & 1);
                 break;
             }
         }
@@ -482,7 +491,7 @@ static void FeedInterpreter() {
     }
     HpglChannel &c = g_ch[g_active];
     for (int i = 0; i < CHPGL_FEED_BURST; i++) {
-        if (PlotterRoom() <= 2 * HpglInterpreter::kRoomReserve) {
+        if (g_opt.Room() <= 2 * HpglInterpreter::kRoomReserve) {
             break;
         }
         if (g_hpgl.Busy()) {
@@ -508,6 +517,7 @@ static void FeedInterpreter() {
                 g_hpgl.AbortInstruction();  /* unterminated label or string */
             }
         }
+        g_opt.EndJob();  /* buffered: order and plot it now */
         g_active = -1;
     }
 }
@@ -517,6 +527,7 @@ static void HandleAborts() {
         if (g_ch[ch].TakeAbortRequest() && ch == g_active) {
             /* ESC.K: drop buffered graphics; the host keeps sending. */
             g_hpgl.AbortInstruction();
+            g_opt.Abort();
             PlotterAbort();
             g_resyncPending = true;
         }
@@ -524,7 +535,8 @@ static void HandleAborts() {
             g_discard[ch] = false;
         }
     }
-    if (PlotterTakeJobAbort() && g_active >= 0) {
+    const bool jobAbort = PlotterTakeJobAbort();
+    if (jobAbort && g_active >= 0) {
         const int ch = g_active;
         g_ch[ch].ClearData();
         g_discard[ch] = true;
@@ -532,7 +544,12 @@ static void HandleAborts() {
             CloseTcpClient();
         }
         g_hpgl.AbortInstruction();
+        g_opt.Abort();
         g_active = -1;
+        g_resyncPending = true;
+    }
+    if (jobAbort) {
+        g_opt.Abort();  /* also a fault while replaying a job whose data has already ended */
         g_resyncPending = true;
     }
     if (g_resyncPending && PlotterIdle()) {
@@ -549,7 +566,8 @@ void TransportInit() {
     g_ch[CH_USB].Init(&g_usbIo, g_ringUsb, sizeof(g_ringUsb), HPGL_HS_NONE);
     g_ch[CH_COM].Init(&g_comIo, g_ringCom, sizeof(g_ringCom), g_settings.comHandshake);
     g_ch[CH_TCP].Init(&g_tcpIo, g_ringTcp, sizeof(g_ringTcp), HPGL_HS_NONE);
-    g_hpgl.Init(PlotterSink(), g_settings.areaMm[0] * HPGL_PU_PER_MM,
+    g_opt.Init(PlotterSink());
+    g_hpgl.Init(&g_opt, g_settings.areaMm[0] * HPGL_PU_PER_MM,
                 g_settings.areaMm[1] * HPGL_PU_PER_MM, g_settings.ident);
     PlotterSetReplyHandler(OnReply);
     InitCom();
@@ -590,7 +608,11 @@ void TransportPoll() {
 }
 
 bool TransportJobActive() {
-    return g_active >= 0 || g_hpgl.Busy();
+    return g_active >= 0 || g_hpgl.Busy() || g_opt.Busy();
+}
+
+bool TransportBuffering() {
+    return g_opt.Buffering();
 }
 
 void TransportAbortJob() {
@@ -603,6 +625,7 @@ void TransportAbortJob() {
         g_active = -1;
     }
     g_hpgl.AbortInstruction();
+    g_opt.Abort();
     PlotterAbort();
     g_resyncPending = true;
 }
@@ -653,6 +676,17 @@ const char *TransportOrigin() {
     return nullptr;
 }
 
+void TransportOptimizerDiag(void (*out)(const char *line)) {
+    char buf[160];
+    snprintf(buf, sizeof(buf),
+             "optimizer: %s  last job: %lu strokes -> %lu paths, pen-up travel %.0f -> %.0f mm%s",
+             g_opt.Buffering() ? "buffering" : (g_opt.Replaying() ? "replaying" : "idle"),
+             (unsigned long)g_opt.LastStrokes(), (unsigned long)g_opt.LastPaths(),
+             (double)g_opt.LastTravelBeforeMm(), (double)g_opt.LastTravelAfterMm(),
+             g_opt.LastOverflowed() ? " (too large: plotted as received)" : "");
+    out(buf);
+}
+
 void TransportUsbDiag(void (*out)(const char *line)) {
     char buf[320];
     UsbPort.RxDebugLine(buf, sizeof(buf));
@@ -668,7 +702,9 @@ void TransportStats(char *buf, size_t len) {
              "source=%s usb_in=%lu com=%s com_in=%lu com_overflow=%lu tcp_in=%lu tcp_jobs=%lu "
              "tcp_connected=%d tcp_avail=%d tcp_live=%d tcp_read=%lu discard=%d active_hpgl=%d console=%d "
              "instr=%lu unknown=%lu labels_skipped=%lu hpgl_error=%d ip=%s",
-             g_active >= 0 ? kChannelName[g_active] : "none", (unsigned long)g_ch[CH_USB].BytesIn(),
+             g_active >= 0 ? kChannelName[g_active]
+                           : (g_opt.Busy() && g_optSource >= 0 ? kChannelName[g_optSource] : "none"),
+             (unsigned long)g_ch[CH_USB].BytesIn(),
              g_com ? (g_com == &ConnectorCOM0 ? "COM-0" : "COM-1") : "off",
              (unsigned long)g_ch[CH_COM].BytesIn(), (unsigned long)g_ch[CH_COM].Overflows(),
              (unsigned long)g_ch[CH_TCP].BytesIn(), (unsigned long)g_tcpJobs, g_tcpConnected ? 1 : 0,

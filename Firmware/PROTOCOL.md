@@ -32,6 +32,10 @@ python Firmware/host/clearhpgl_cli.py --host 192.168.0.110 send drawing.plt
 
 One source owns the plotter at a time. It keeps it until its buffer is empty and it has either closed (TCP) or been quiet for 2 s (USB, COM). Then the next source with data takes over; other sources wait (TCP and USB by back-pressure, COM by XON/XOFF). Replies to output instructions go to the owning source. When a source finishes, an unterminated last instruction (`PU0,0` with no `;`) is ended as if `;` had arrived.
 
+### Reordering (`optimize`)
+
+Jobs from the sources set in `optimize` (default USB and COM: CAD drivers such as AutoCAD) are buffered whole and plotted in a better order once they end: strokes whose ends meet are joined into paths, everything a closed contour encloses is drawn before it (outlines last, so a cutter never frees a part before its interior is cut), and among the paths that are ready the nearest is drawn next, entered at its nearest vertex or end. Pen or speed changes split a job into groups that keep their order. While buffering, `status` reports `state=buffering`; plotting starts when the job ends (2 s of quiet on USB/COM, connection closed on TCP) or at a page break (`PG`). A page holds up to 8000 points and 500 strokes; a larger job is plotted as received and the rest streams through. `diag` prints the last job's strokes, paths and pen-up travel before and after. The ClearHPGL app orders its own jobs, so network jobs are not reordered by default.
+
 ### Flow control
 
 | Link | Mechanism |
@@ -131,7 +135,7 @@ Every command ends with a line starting `ok` or `error:`.
 
 | Command | Effect |
 |---------|--------|
-| `status` | `state=idle\|plotting\|paused\|disabled\|waiting_enable\|fault`, position in mm, pen, queue depth, counters, link stats |
+| `status` | `state=idle\|buffering\|plotting\|paused\|disabled\|waiting_enable\|fault`, position in mm, pen, queue depth, counters, link stats |
 | `config` | every setting with its current value |
 | `set <key> <value>` | validate, apply, save to NVM. `[disabled]` keys need motors disabled; `[restart]` keys apply after `restart`. |
 | `defaults` | factory settings (motors disabled) |
@@ -165,7 +169,8 @@ Stored in the NVM user page with magic `CHPG`, so blobs left by ClearAI (`CAIC`)
 | `estop_di6`, `auto_enable`, `hlfb_check` | 1, 1, 1 | live |
 | `com_port`, `com_baud`, `com_handshake`, `com_rs232` | 0, 9600, 1, 1 | restart |
 | `net_mode`, `ip`, `netmask`, `gateway` | DHCP | restart |
-| `ident` | `7475A` | live |
+| `ident` | `7475A` | live. `758x` / `759x` (DraftMaster, e.g. AutoCAD's "Draftmaster 2 (7596A)" driver): plotter 0,0 at the bed centre, `OH` reports `-w/2,-h/2,w/2,h/2` |
+| `optimize` | 3 (USB + COM) | live. Sources to buffer and reorder: 1 USB, 2 COM, 4 network |
 
 ## Not implemented yet
 

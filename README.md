@@ -1,165 +1,175 @@
 # ClearHPGL
 
-ClearHPGL turns a [Teknic ClearCore](https://teknic.com/products/io-motion-controller/) with two
-ClearPath step-and-direction servos into an HP-GL pen plotter, and comes with a Windows desktop app
-to drive it.
+**Build your own HP-GL plotter from industrial motion parts, and plot to it from the CAD software
+you already use.**
 
-- **Firmware** (`Firmware/`): the board behaves like an HP 7475A-class plotter that also accepts
-  the HP-GL/2 commands drivers commonly send. Anything that can write a `.plt` file to a port can
-  plot: AutoCAD's HP-GL and HP-GL/2 plotter drivers, `copy /b drawing.plt COM3`, or a raw TCP
-  print port. No host software is needed.
-- **App** (repo root, Qt 6): opens DXF or HP-GL, previews exactly what the board will draw (it
-  compiles in the firmware's own interpreter), orders DXF paths for cutting, sends jobs, and shows
-  the pen live in a 3D view.
+HP-GL is the language HP's pen plotters spoke, and it never went away: AutoCAD, CorelDRAW, sign and
+vinyl software and countless CAM tools can still "print" a drawing as HP-GL. ClearHPGL is firmware
+that makes a [Teknic ClearCore](https://teknic.com/products/io-motion-controller/) controller with
+two ClearPath servos understand that language and behave like a real plotter. Point a plotter
+driver at its USB port, serial port or network address and it draws: no plugin, no converter, no
+special host software.
 
-**Status: experimental.** It runs on one bench setup (ClearCore, ClearPath-SD on X and Y, pen on
-an output) but is not certified for production or safety-critical use. Keep a physical E-stop in
-the circuit.
+Alongside the firmware is **ClearHPGL**, a Windows desktop app for working with the machine: open a
+DXF or HP-GL file, see exactly what will be drawn, send it, and watch the pen move.
 
-## Firmware
+The firmware drives two axes and a pen lift (a digital output or a third ClearPath), so the
+natural build is a pen plotter of whatever size your mechanics allow; any machine that raises and
+lowers a tool along 2D paths, such as a marking or scoring gantry, can be driven the same way.
+(Tangential knife offsets for drag-knife cutting are not implemented.)
 
-| Area | What it does |
-|------|--------------|
-| Inputs | USB virtual COM port, COM-0 / COM-1 (RS-232 or TTL, off by default), raw TCP 9100 (one connection per job). Setup console on USB (`menu`) and TCP 9300; UDP 9302 discovery. One source plots at a time; the others wait. |
-| HP-GL | Absolute/relative moves, `IP` `SC` `IW` `RO` `IR`, arcs and circles (`AA` `AR` `CI`), rectangles and wedges (outlines), encoded polylines (`PE`), output queries (`OI` `OH` `OA` ...), `ESC.` device control, ENQ/ACK and XON/XOFF. PCL/PJL wrappers from Windows drivers are ignored. |
-| Motion | Coordinated X/Y with junction lookahead, curvature speed limits, configurable speeds and acceleration. Pen on a digital output or a third ClearPath (M2). |
-| Job reordering | Jobs from USB and COM (by default) are buffered whole and plotted in a better order: touching strokes joined, everything inside a closed contour drawn before it (outlines last, as a cutter needs), nearest shape next. Up to 8000 points / 500 strokes per page; larger jobs plot as received. |
-| CAD compatibility | `ident` sets the model the board reports; DraftMaster / 758x idents put plotter 0,0 at the bed centre as those plotters do. `job_speed 0` ignores pen speeds sent by the job and always draws at the board's pen-down speed. |
-| Safety | DI-6 E-stop, ClearPath alert and HLFB checks: motors disable, the job is dropped, the fault latches until cleared. |
-| Settings | `config` / `set <key> <value>` on the console, stored in NVM. Network settings are imported from ClearCoreROS or ClearAI firmware if found. |
+> **Status: experimental.** ClearHPGL runs on a bench machine (ClearCore, ClearPath-SD servos on X
+> and Y, pen on an output) and plots real jobs, including direct from AutoCAD. It is not certified
+> for production or safety-critical use. Always keep a physical E-stop in the motor power circuit.
 
-Full protocol, settings and defaults: [Firmware/PROTOCOL.md](Firmware/PROTOCOL.md).
+## How it works
 
-Default machine: X on M0, Y on M1, 800 steps/rev, 5 mm/rev, 400 × 300 mm bed, pen on IO-0,
-E-stop on DI-6 (active low; `set estop_di6 0` if not wired).
+```
+ AutoCAD / CAM / sign software            ClearHPGL app
+ (HP-GL or HP-GL/2 plotter driver)        (DXF or .plt, preview, monitor)
+              │                                     │
+              └──── USB · RS-232 · TCP 9100 ────────┘
+                               │
+                   ┌───────────▼───────────────────────────────┐
+                   │ ClearCore (ClearHPGL firmware)            │
+                   │  input channel   flow control, ESC. codes,│
+                   │                  driver wrappers stripped │
+                   │  HP-GL interpreter  scaling, rotation,    │
+                   │                     windows, arcs, PE ... │
+                   │  job optimizer   joins strokes, cuts      │
+                   │                  outlines last, shortest  │
+                   │                  travel                   │
+                   │  motion planner  coordinated X/Y,         │
+                   │                  lookahead, accel limits  │
+                   └───────────┬───────────────────────────────┘
+                               │ step / direction / enable, HLFB
+                    ClearPath X · ClearPath Y · pen or Z
+```
 
-Not implemented: `LB` text, area fills, line types and pen widths, homing / limit switches, and
-multi-pen carousels (`SP` n > 1 does not pause for a pen change).
+1. **Any source can send a job.** The board listens on its USB virtual COM port, an optional
+   RS-232/TTL serial port, and a raw TCP print port (9100), and handles the flow-control and
+   device-control conventions real plotters used, so drivers that expect a plotter get one. One
+   source plots at a time; the others wait their turn.
+2. **The interpreter turns HP-GL into geometry** the way an HP plotter would: scaling and
+   rotation, clipping windows, arcs and circles chorded smoothly, HP-GL/2 encoded polylines. It
+   reports itself as a configurable model, so drivers for a 7475A or a DraftMaster both work (the
+   DraftMaster's centred origin included).
+3. **The job optimizer fixes the drawing order.** CAD drivers send paths in whatever order the
+   drawing was made, often splitting one outline into many pieces. For jobs from CAD (USB and
+   serial by default) the board buffers the whole job, joins touching strokes, draws everything
+   inside a contour before the contour itself (essential for cutting) and always moves to the
+   nearest next shape. On the AutoCAD parts tested it cut pen-up travel by 45-65%.
+4. **The motion planner drives the servos** as one coordinated machine, looking ahead across
+   segments so curves and polylines flow at speed instead of stopping at every vertex.
+5. **Safety stays in the loop.** An E-stop input, ClearPath alerts and the servos' HLFB "ready"
+   signal are checked continuously; a fault disables the motors, drops the job and latches until
+   cleared.
 
-## App
+## The desktop app
 
-- **Open** ASCII DXF (`LINE`, `LWPOLYLINE`, `POLYLINE`, `ARC`, `CIRCLE`; `$INSUNITS` honoured) or
-  HP-GL files. DXF paths are joined and ordered for cutting (holes before outlines, nearest next).
-  Path checks and quick fixes for open contours and gaps, with **Save DXF geometry** and
-  **Export HP-GL**.
-- **Preview** through the firmware's interpreter and input channel, using the board's model
-  (so DraftMaster centre-origin files land where the board will put them).
-- **Plot** over Ethernet or the USB/serial port, with progress, a cycle timer and the HP-GL line
-  being drawn highlighted.
-- **3D view** of the bed: the planned path, the pen live (about 40 updates/s), a green trace of
-  everything drawn with the pen down, follow-pen and top-down modes.
-- **Follow** jobs sent to the board by other programs (for example AutoCAD on the USB port) while
-  connected over Ethernet.
-- **Control**: enable/disable, pause, abort, set origin, jog, go to, pen up/down, and a settings
-  dialog for the board's configuration.
+ClearHPGL (Qt 6, Windows) is optional but makes the machine pleasant to use:
 
-## Plotting from AutoCAD
+- **Open** a DXF or an HP-GL file. DXF drawings are converted to HP-GL with the same cut ordering
+  the firmware uses, and checked for open contours and small gaps, with one-click fixes.
+- **Preview** with the firmware's own interpreter compiled into the app, so what you see is what
+  the board will draw: position on the bed, rotation, scaling and clipping included.
+- **Plot** over Ethernet or the serial port and follow it: a 3D view of the bed shows the pen live
+  and paints everything drawn in green, the HP-GL line being drawn is highlighted, and a cycle
+  timer records how long the run took. Jobs sent by other programs (AutoCAD on the USB port, say)
+  are followed the same way.
+- **Control and configure** the machine: enable, pause, abort, jog, set origin, pen up/down, and
+  edit the board's settings.
 
-Two profiles work, plotting straight to the board's COM port:
+## What you need
 
-- **Draftmaster 2 (7596A)** (HP-GL driver): set the board's `ident` to `7596A` so its origin is
-  the bed centre. AutoCAD sends arcs as short line segments.
-- **DraftMaster RX 7596B** (HP-GL/2 driver): sends real arcs (`AA`), circles and encoded
-  polylines; places the plot itself, independent of `ident`.
-
-Give either profile a custom 400 × 300 mm paper size with no margins, and in Configure Port set
-flow control to XON/XOFF. The board reorders the job before plotting (`optimize`), so AutoCAD's own
-path order does not matter much.
+- A Teknic ClearCore controller.
+- Two ClearPath servos in step-and-direction mode (ClearPath-SD, or MC in step/dir) on connectors
+  M0 (X) and M1 (Y), with HLFB.
+- A pen or tool lift: a solenoid or relay on a digital output (IO-0 by default), or a third
+  ClearPath on M2.
+- An E-stop wired to DI-6 (or set `estop_di6 0` if you have none on the board).
+- To build: Microchip/Atmel Studio 7 for the firmware; Visual Studio 2022, CMake and Qt 6 (vcpkg)
+  for the app.
 
 ## Getting started
 
-1. Build and flash the firmware (below), or flash a `.bin` with
-   `tools\flash_clearcore.cmd Firmware\ClearCoreFirmware\Release\ClearHPGL_Firmware.bin`.
-2. Open the USB port in a serial terminal, type `menu`, then `config` and `set <key> <value>` for
-   your mechanics (`steps_rev_x`, `mm_rev_x`, `width_mm`, speeds, ...). DHCP is the default; a
-   static address is `set net_mode 1` plus `ip`, `netmask`, `gateway`, then `restart`.
-3. Plot:
+1. **Flash the firmware** from a USB-connected ClearCore:
+
+   ```powershell
+   ./Firmware/build.ps1 -Flash
+   ```
+
+2. **Set up the machine** from a serial terminal on the USB port: type `menu`, then `config` to
+   see the settings and `set <key> <value>` to change them. The essentials are steps per
+   revolution and travel per revolution for each axis, the bed size, and speeds. The board uses
+   DHCP by default; `set net_mode 1` with `ip`, `netmask` and `gateway`, then `restart`, gives it a
+   static address.
+
+3. **Plot.** Any of these work:
+
+   ```powershell
+   copy /b drawing.plt COM3                                       # USB or serial port (cmd.exe)
+   python Firmware/host/clearhpgl_cli.py discover                 # find boards on the network
+   python Firmware/host/clearhpgl_cli.py --host <ip> send drawing.plt
+   ```
+
+   or open the drawing in the ClearHPGL app and press **Plot**.
+
+### Plotting straight from AutoCAD
+
+Add a plotter with the **HP DraftMaster RX 7596B** (HP-GL/2) or **Draftmaster 2 (7596A)** (HP-GL)
+model, point it at the board's COM port, give it a custom paper size matching your bed with no
+margins, and set flow control to XON/XOFF. For the Draftmaster 2 driver, also `set ident 7596A`
+on the board so it uses the DraftMaster's centred origin. The HP-GL/2 driver sends true arcs and
+compact polylines and is the better choice. Because the board reorders every job, AutoCAD's own
+path order does not matter, and `set job_speed 0` lets the board's pen speed setting win over the
+speed AutoCAD sends.
+
+## Documentation
+
+- [Firmware/PROTOCOL.md](Firmware/PROTOCOL.md): connections and ports, supported HP-GL and
+  HP-GL/2, device control, console commands, every setting with its default, and faults.
+- `Firmware/host/clearhpgl_cli.py --help`: command-line client (discover, send, query, console).
+
+Not supported yet: text (`LB`), area fills, line types and pen widths, homing and limit switches,
+and automatic pen changes.
+
+## Building and testing
+
+**App:**
 
 ```powershell
-copy /b drawing.plt COM3                                        # USB or COM port, from cmd.exe
-python Firmware/host/clearhpgl_cli.py discover
-python Firmware/host/clearhpgl_cli.py --host <ip> send drawing.plt
-python Firmware/host/clearhpgl_cli.py --host <ip> console status
+./build.ps1             # Release build, deployed with its Qt runtime
+./build.ps1 -Install    # also install to %LOCALAPPDATA%\Programs\ClearHPGL with a Start-menu shortcut
 ```
 
-Or connect the app (Ethernet or serial), open a drawing and press Plot.
+**Firmware:** `./Firmware/build.ps1` (or open `Firmware/ClearCoreFirmware/ClearHPGL_Firmware.atsln`
+in Microchip Studio) builds LwIP, libClearCore and the firmware and writes `.bin` and `.uf2` files.
 
-## Building
-
-### App (Windows)
-
-Requirements: Visual Studio 2022 (Desktop C++), CMake ≥ 3.21, Qt 6 via vcpkg (`OpenGL`,
-`OpenGLWidgets`, `Widgets`, `SerialPort`, `Network`, `Svg`).
+**Tests, no hardware needed:**
 
 ```powershell
-./build.ps1                     # Release, Visual Studio generator, runs windeployqt
-./build.ps1 -Install            # ...and copy to %LOCALAPPDATA%\Programs\ClearHPGL + Start-menu shortcut
-./build.ps1 -Config Debug
-./build.ps1 -Generator Ninja -SkipDeploy
+./Firmware/tests/run_tests.ps1                         # interpreter, input channel, job optimizer, interpolator
+python Firmware/host/fake_plotter.py --bind 127.0.0.1  # a network stand-in for a board, for the app
 ```
 
-Output: `ProjectData/build/<Config>/ClearHPGL.exe`. The script finds `VsDevCmd.bat`, CMake and
-`%USERPROFILE%\vcpkg`; override with `-VsDevCmd`, `-CmakeExe`, `-VcpkgToolchain`,
-`-WinDeployQtExe`. Pin the installed copy (`-Install`) to the taskbar: the build folder is
-rewritten on every build.
+## Repository layout
 
-### Firmware
-
-Requires Microchip/Atmel Studio 7 (ARM GCC toolchain and the SAME53 DFP pack).
-
-- **IDE:** open `Firmware/ClearCoreFirmware/ClearHPGL_Firmware.atsln` (includes the libClearCore
-  and LwIP projects).
-- **Command line:** builds LwIP → libClearCore → firmware with the Studio makefiles and writes
-  `.bin` and `.uf2` to `Firmware/ClearCoreFirmware/<Config>/`. After adding or removing sources in
-  the `.cppproj`, run `python Firmware/gen_makefiles.py`.
-
-```powershell
-./Firmware/build.ps1                  # Release
-./Firmware/build.ps1 -Config Debug
-./Firmware/build.ps1 -Flash           # build, then flash a USB-connected ClearCore
-```
-
-### Tests (no board needed)
-
-```powershell
-./Firmware/tests/run_tests.ps1        # HP-GL interpreter, input channel, job optimizer,
-                                      # libClearCore LinearInterpolator (MSVC via CMake)
-python Firmware/host/fake_plotter.py --bind 127.0.0.1             # network stand-in for a board
-./ProjectData/build/Release/test_plotterlink.exe 127.0.0.1        # app protocol client against it
-```
-
-`Firmware/tests/build/Release/test_hpgl.exe <file.plt> [ident]` runs any plot file through the
-interpreter and job optimizer and reports strokes, paths and pen-up travel before and after.
-
-## Layout
-
-| Path | Contents |
-|------|----------|
-| `src/MainWindow.*` | Main window: connection, plotter control, plot and jog tabs, preview, DXF fixes |
-| `src/PlotterLink.*` | Protocol client: console, jobs, telemetry, discovery, serial |
-| `src/HpglPreview.*` | HP-GL → strokes through the firmware's channel and interpreter |
-| `src/DxfImport.*` | ASCII DXF import, path joining and cut ordering, HP-GL generation |
-| `src/PathGapBridge.*`, `src/PathVizIssues.*` | Path checks and gap repair |
-| `src/PositionView3D.*` | 3D / top-down view of the bed, path, progress and pen trace |
-| `src/PlotterSettingsDialog.*` | Board settings dialog |
-| `tests/` | `test_plotterlink` (protocol client), `dxf_probe` (DXF import and cut order), `render_settings_dialog` (UI renders, `--hpgl-extent` placement check) |
-| `Firmware/ClearCoreFirmware/` | Plotter firmware: `Hpgl` (interpreter), `HpglChannel` (input handling), `JobOptimizer`, `Plotter` (motion and pen), `Transport` (USB, COM, TCP, UDP), `Console`, `Settings` |
-| `Firmware/tests/` | Host tests for the portable firmware code and the interpolator |
-| `Firmware/host/` | `clearhpgl_cli.py` (discover, send, query, console), `fake_plotter.py` |
-| `Firmware/PROTOCOL.md` | Links, HP-GL coverage, console commands and settings |
-| `libClearCore/`, `LwIP/` | ClearCore library and LwIP stack used by the firmware (see below) |
-| `tools/` | `bossac`, `uf2-builder`, `flash_clearcore.cmd`, icon generator |
+| Path | What it is |
+|------|------------|
+| `Firmware/ClearCoreFirmware/` | The plotter firmware: HP-GL interpreter, input channels, job optimizer, motion and pen control, network and USB transport, console and settings |
+| `Firmware/tests/`, `Firmware/host/` | Host tests; command-line client and fake board |
+| `src/`, `resources/` | The desktop app |
+| `tests/` | App-side test tools |
+| `libClearCore/`, `LwIP/` | ClearCore library and TCP/IP stack the firmware builds on |
+| `tools/` | Flashing and UF2 tools |
 | `ProjectData/SampleDXF/` | Sample drawings |
 
-## Origin and the ClearCore library
+## Background
 
-ClearHPGL was split out of
-[EnhancedClearCoreLibrary](https://github.com/AGSweeney/EnhancedClearCoreLibrary) with history
-(`git subtree split`). The app came from its `ClearHPGL/` folder; the firmware started as a fork of
-`ClearCNC_Controller/ClearCoreFirmware/` and was rewritten as the plotter firmware.
-
-`libClearCore/` and `LwIP/` are vendored copies. Fixes made here are backported to
-EnhancedClearCoreLibrary and documented in its `MODIFICATIONS.md`; the `libClearCore` sources
-currently match its `main`. They include coordinated-motion step-burst and slow-move fixes, TCP
-receive flow control, and USB serial receive fixes (writing to the board's USB port with
-`copy /b` depends on them).
+ClearHPGL grew out of [EnhancedClearCoreLibrary](https://github.com/AGSweeney/EnhancedClearCoreLibrary),
+which extends Teknic's ClearCore library with coordinated two-axis motion and unit conversion, and
+was split into its own repository with its history. The `libClearCore` copy here is kept in step
+with that library: problems found while building the plotter, such as step bursts on small arcs,
+stalled TCP and USB transfers and faults on slow moves, were fixed here and backported there (see
+its `MODIFICATIONS.md`).

@@ -48,6 +48,10 @@ The firmware drives two axes and a pen lift, so the natural build is a pen plott
 
 ClearHPGL (Qt 6, Windows) is optional, but it makes the machine much easier to use.
 
+[![ClearHPGL desktop app screen recording](https://img.youtube.com/vi/NiK79FRQO38/hqdefault.jpg)](https://www.youtube.com/watch?v=NiK79FRQO38)
+
+Watch the [screen recording of the desktop app on YouTube](https://www.youtube.com/watch?v=NiK79FRQO38).
+
 | Feature | Details |
 |---------|---------|
 | **Open** | DXF or HP-GL files. DXF drawings get the same cut ordering as the firmware and are checked for open contours and gaps, with one-click fixes. |

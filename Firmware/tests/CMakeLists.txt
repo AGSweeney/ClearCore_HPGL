@@ -19,5 +19,13 @@ else()
     target_compile_options(test_hpgl PRIVATE -Wall -Wextra)
 endif()
 
+# libClearCore's LinearInterpolator (no ClearCore dependencies)
+add_executable(test_interp
+    test_interp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../libClearCore/src/LinearInterpolator.cpp
+)
+target_include_directories(test_interp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../libClearCore/inc)
+
 enable_testing()
 add_test(NAME test_hpgl COMMAND test_hpgl)
+add_test(NAME test_interp COMMAND test_interp)

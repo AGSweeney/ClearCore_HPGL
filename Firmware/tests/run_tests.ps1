@@ -11,7 +11,9 @@ if ($LASTEXITCODE -ne 0) { throw "CMake configure failed." }
 cmake --build $build --config Release
 if ($LASTEXITCODE -ne 0) { throw "Test build failed." }
 
-$exe = Join-Path $build "Release\test_hpgl.exe"
-if (-not (Test-Path -LiteralPath $exe)) { $exe = Join-Path $build "test_hpgl.exe" }
-& $exe
-if ($LASTEXITCODE -ne 0) { throw "Tests failed." }
+foreach ($name in @("test_hpgl", "test_interp")) {
+    $exe = Join-Path $build "Release\$name.exe"
+    if (-not (Test-Path -LiteralPath $exe)) { $exe = Join-Path $build "$name.exe" }
+    & $exe
+    if ($LASTEXITCODE -ne 0) { throw "Tests failed ($name)." }
+}

@@ -86,6 +86,16 @@ int main(int argc, char **argv) {
         std::printf("cut order: %d closed contours, %d violations; last strip spans %.1f x %.1f mm\n", closed,
                     violations, lx1 - lx0, ly1 - ly0);
     }
+    {
+        /* Pen-up travel, starting from the lower-left corner (0,0 once placed at origin). */
+        QVector3D pen(minX, minY, 0.f);
+        double air = 0.0;
+        for (const auto &strip : out.polylinesMm) {
+            air += double((strip.first() - pen).length());
+            pen = strip.last();
+        }
+        std::printf("pen-up travel %.0f mm (drawn %.0f mm)\n", air, len);
+    }
     const QByteArray hpgl = BuildHpglFromPolylinesMm(out.polylinesMm).toLatin1() + "\nPU;SP0;\n";
     std::printf("job HP-GL: %d bytes, %d instructions (';')\n", int(hpgl.size()), int(hpgl.count(';')));
     if (argc > 2) {

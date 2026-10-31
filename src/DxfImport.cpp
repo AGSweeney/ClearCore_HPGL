@@ -7,6 +7,7 @@
 #include <QtMath>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace {
 
@@ -590,8 +591,9 @@ bool findEntitiesSection(const QStringList &lines, int *startIdx) {
     return false;
 }
 
-constexpr float kJoinTolMm = 0.01f;   // strip ends closer than this are the same point
+constexpr float kJoinTolMm = 0.06f;   // strip ends closer than this are the same point (~2 plotter units)
 constexpr float kClosedTolMm = 0.08f;  // first ~ last within this: a closed contour
+constexpr float kNearlyClosedFrac = 0.05f;  // open, but gap < 5% of its size: still encloses
 
 bool isClosedStrip(const QVector<QVector3D> &s) {
     return s.size() >= 4 && (s.first() - s.last()).length() <= kClosedTolMm;
@@ -687,6 +689,7 @@ struct StripBox {
         constexpr float e = 1.0e-3f;
         return o.x0 >= x0 - e && o.y0 >= y0 - e && o.x1 <= x1 + e && o.y1 <= y1 + e;
     }
+    double area() const { return double(x1 - x0) * double(y1 - y0); }
 };
 
 bool pointInPolygon(const QVector<QVector3D> &poly, float x, float y) {
@@ -720,7 +723,7 @@ void OrderStripsForCutting(QVector<QVector<QVector3D>> *strips, QVector<QVector3
     const QVector<QVector<QVector3D>> s = chainStrips(*strips);
     const int n = s.size();
     QVector<StripBox> box(n);
-    QVector<bool> closed(n);
+    QVector<bool> encloses(n);  // closed, or open with only a small gap: can contain other shapes
     QVector<double> area(n, 0.0);
     for (int i = 0; i < n; ++i) {
         StripBox b{s[i][0].x(), s[i][0].y(), s[i][0].x(), s[i][0].y()};
@@ -731,18 +734,33 @@ void OrderStripsForCutting(QVector<QVector<QVector3D>> *strips, QVector<QVector3
             b.y1 = qMax(b.y1, p.y());
         }
         box[i] = b;
-        closed[i] = isClosedStrip(s[i]);
-        if (closed[i]) {
+        const float diag = std::hypot(b.x1 - b.x0, b.y1 - b.y0);
+        encloses[i] = isClosedStrip(s[i]) ||
+                      (s[i].size() >= 4 && (s[i].first() - s[i].last()).length() <= kNearlyClosedFrac * diag);
+        if (encloses[i]) {
             area[i] = polygonArea(s[i]);
         }
     }
-    // Nesting depth = number of closed contours enclosing the strip. A strip is enclosed when most
-    // of up to 9 sample vertices are inside (robust to shared or touching boundary points).
-    QVector<int> depth(n, 0);
+    // parents[i]: shapes that must wait for strip i. A contour waits for what it encloses (most of
+    // up to 9 sample vertices inside; robust to shared or touching boundary points). An open path
+    // that encloses nothing -- e.g. one piece of an outline broken by a gap -- waits for every
+    // smaller shape inside its bounding box, so a broken outline is still cut after its interior.
+    QVector<QVector<int>> parents(n);
+    QVector<int> pending(n, 0);  // children not yet cut
     for (int i = 0; i < n; ++i) {
         const int samples = qMin(9, int(s[i].size()));
         for (int j = 0; j < n; ++j) {
-            if (j == i || !closed[j] || !box[j].contains(box[i]) || (closed[i] && area[j] <= area[i])) {
+            if (j == i || !box[j].contains(box[i])) {
+                continue;
+            }
+            if (!encloses[j]) {
+                if (box[i].area() < box[j].area()) {
+                    parents[i].append(j);
+                    pending[j]++;
+                }
+                continue;
+            }
+            if (encloses[i] && area[j] <= area[i]) {
                 continue;
             }
             int inside = 0;
@@ -751,26 +769,72 @@ void OrderStripsForCutting(QVector<QVector<QVector3D>> *strips, QVector<QVector3
                 inside += pointInPolygon(s[j], p.x(), p.y()) ? 1 : 0;
             }
             if (inside * 2 > samples) {
-                depth[i]++;
+                parents[i].append(j);
+                pending[j]++;
             }
         }
     }
-    QVector<int> order(n);
-    for (int i = 0; i < n; ++i) {
-        order[i] = i;
-    }
-    // Deepest first, so the outermost contours (depth 0) come last. Within a level, smallest extent
-    // first: an outline left open by a gap still encloses nothing, but it is the largest shape.
-    auto extent = [&](int i) { return double(box[i].x1 - box[i].x0) * double(box[i].y1 - box[i].y0); };
-    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
-        return depth[a] != depth[b] ? depth[a] > depth[b] : extent(a) < extent(b);
-    });
 
+    // Greedy nearest-neighbour walk over the shapes that are ready (all children cut), from the
+    // drawing's lower-left corner (0,0 once placed at the origin). A closed contour is entered at
+    // its vertex nearest the pen; an open path is drawn from whichever end is nearer.
+    QVector3D pen(box.isEmpty() ? 0.f : box[0].x0, box.isEmpty() ? 0.f : box[0].y0, 0.f);
+    for (const StripBox &b : box) {
+        pen.setX(qMin(pen.x(), b.x0));
+        pen.setY(qMin(pen.y(), b.y0));
+    }
+    auto boxDist = [](const StripBox &b, const QVector3D &p) {
+        const float dx = qMax(0.f, qMax(b.x0 - p.x(), p.x() - b.x1));
+        const float dy = qMax(0.f, qMax(b.y0 - p.y(), p.y() - b.y1));
+        return std::hypot(dx, dy);
+    };
+    QVector<bool> done(n, false);
     QVector<QVector3D> newRapids;
     QVector3D lastEnd;
     strips->clear();
-    for (int i : order) {
-        appendStripFromPoints(s[i], strips, &newRapids, &lastEnd);
+    for (int step = 0; step < n; ++step) {
+        int best = -1, bestEntry = 0;
+        bool bestReverse = false;
+        float bestD = std::numeric_limits<float>::max();
+        for (int j = 0; j < n; ++j) {
+            if (done[j] || pending[j] > 0 || boxDist(box[j], pen) >= bestD) {
+                continue;
+            }
+            const QVector<QVector3D> &c = s[j];
+            if (isClosedStrip(c)) {
+                for (int k = 0; k + 1 < c.size(); ++k) {
+                    const float d = (c[k] - pen).length();
+                    if (d < bestD) {
+                        bestD = d, best = j, bestEntry = k, bestReverse = false;
+                    }
+                }
+            } else {
+                const float df = (c.first() - pen).length();
+                const float dl = (c.last() - pen).length();
+                if (qMin(df, dl) < bestD) {
+                    bestD = qMin(df, dl), best = j, bestEntry = 0, bestReverse = dl < df;
+                }
+            }
+        }
+        if (best < 0) {  // only possible with a containment cycle; take any remaining shape
+            for (int j = 0; j < n && best < 0; ++j) {
+                best = done[j] ? -1 : j;
+            }
+        }
+        QVector<QVector3D> path = s[best];
+        if (isClosedStrip(path) && bestEntry > 0) {
+            path.removeLast();  // drop the closing duplicate, rotate, close again at the new start
+            std::rotate(path.begin(), path.begin() + bestEntry, path.end());
+            path.append(path.first());
+        } else if (bestReverse) {
+            std::reverse(path.begin(), path.end());
+        }
+        done[best] = true;
+        for (int p : parents[best]) {
+            pending[p]--;
+        }
+        appendStripFromPoints(path, strips, &newRapids, &lastEnd);
+        pen = path.last();
     }
     if (rapids) {
         *rapids = newRapids;

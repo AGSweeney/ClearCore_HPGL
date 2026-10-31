@@ -2,6 +2,8 @@
 :: Purpose:  Flash a connected ClearCore device with a compiled binary file.
 :: Author:   Zachary Lebold, Nick Dawson
 :: Revision: December 2024 - Fixing WMIC Deprecation Issue
+:: Source:   Teknic, Inc. ClearCore library tools (MIT, Copyright (c) Teknic, Inc.;
+::           see libClearCore/license.txt).
 
 @echo off
 

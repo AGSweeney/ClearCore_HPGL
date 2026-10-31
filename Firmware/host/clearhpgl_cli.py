@@ -1,3 +1,4 @@
+# MIT License. Copyright (c) 2026 Adam G. Sweeney <agsweeney@gmail.com>
 """Bench client for ClearHPGL_Firmware. Standard library only (pyserial for COM ports).
 
     python Firmware/host/clearhpgl_cli.py discover

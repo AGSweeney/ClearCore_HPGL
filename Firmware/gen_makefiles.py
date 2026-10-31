@@ -1,3 +1,4 @@
+# MIT License. Copyright (c) 2026 Adam G. Sweeney <agsweeney@gmail.com>
 """Regenerate the Atmel Studio style Debug/Release Makefiles for the firmware.
 
 Microchip Studio rewrites these itself when you build in the IDE. This script keeps

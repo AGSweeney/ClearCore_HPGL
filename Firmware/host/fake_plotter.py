@@ -1,3 +1,4 @@
+# MIT License. Copyright (c) 2026 Adam G. Sweeney <agsweeney@gmail.com>
 """Stand-in for a ClearHPGL_Firmware board, for developing and testing host software.
 
     python Firmware/host/fake_plotter.py [--rate 20000] [--bind 0.0.0.0]

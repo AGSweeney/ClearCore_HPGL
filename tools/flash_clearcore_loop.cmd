@@ -3,6 +3,8 @@
 ::           Do this in a loop until an upload error is discovered.
 :: Author:   Zachary Lebold
 :: Revision: February 2020 - initial version
+:: Source:   Teknic, Inc. ClearCore library tools (MIT, Copyright (c) Teknic, Inc.;
+::           see libClearCore/license.txt).
 
 @echo off
 

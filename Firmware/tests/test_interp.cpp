@@ -1,3 +1,5 @@
+/* MIT License. Copyright (c) 2026 Adam G. Sweeney <agsweeney@gmail.com> */
+
 // libClearCore LinearInterpolator: no overshoot past the segment end, no step burst, exact end.
 // Regression for the 20 mm/s motor fault: a 2-step X over 8800-step Y segment overran Y by
 // 1685 steps with per-axis Q15 increments, then the end clamp snapped it back in one sample.

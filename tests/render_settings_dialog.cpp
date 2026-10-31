@@ -1,3 +1,5 @@
+/* MIT License. Copyright (c) 2026 Adam G. Sweeney <agsweeney@gmail.com> */
+
 // Renders the Plotter settings dialog to a PNG for a visual check.
 //   render_settings_dialog <config.txt> <out.png>
 // config.txt holds the console's "config" reply (one "key = value  help" per line).

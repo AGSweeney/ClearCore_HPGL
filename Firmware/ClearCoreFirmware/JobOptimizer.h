@@ -1,3 +1,5 @@
+/* MIT License. Copyright (c) 2026 Adam G. Sweeney <agsweeney@gmail.com> */
+
 /*
  * JobOptimizer: buffers a whole HP-GL job and replays it in a better order.
  *

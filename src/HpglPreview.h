@@ -1,3 +1,5 @@
+/* MIT License. Copyright (c) 2026 Adam G. Sweeney <agsweeney@gmail.com> */
+
 #pragma once
 
 // Preview of an HP-GL job using the firmware's own interpreter

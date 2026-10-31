@@ -178,6 +178,10 @@ python Firmware/host/fake_plotter.py --bind 127.0.0.1   # stand-in board for tes
 | `tools/` | Flashing and UF2 tools |
 | `ProjectData/SampleDXF/` | Sample drawings |
 
+## License
+
+ClearHPGL's source code is released under the [MIT License](LICENSE). It builds on code by others that keeps its own licence: Teknic's ClearCore library (MIT), Microchip's ASF drivers and device startup files, the lwIP TCP/IP stack, and Teknic's flashing tools. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## Background
 
 ClearHPGL grew out of [EnhancedClearCoreLibrary](https://github.com/AGSweeney/EnhancedClearCoreLibrary), which extends Teknic's ClearCore library with coordinated two-axis motion and unit conversion. It was split into its own repository with its history.

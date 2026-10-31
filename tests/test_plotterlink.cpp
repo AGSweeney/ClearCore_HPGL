@@ -1,3 +1,5 @@
+/* MIT License. Copyright (c) 2026 Adam G. Sweeney <agsweeney@gmail.com> */
+
 // Headless check of PlotterLink against a ClearHPGL console + HP-GL port
 // (the real board, or Firmware/host/fake_plotter.py).
 //

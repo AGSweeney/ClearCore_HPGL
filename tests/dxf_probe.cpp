@@ -1,3 +1,5 @@
+/* MIT License. Copyright (c) 2026 Adam G. Sweeney <agsweeney@gmail.com> */
+
 // Prints what the app's DXF importer produces: strips, vertices, extent, drawn length.
 //   dxf_probe <file.dxf>
 

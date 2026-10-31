@@ -1,3 +1,4 @@
+# MIT License. Copyright (c) 2026 Adam G. Sweeney <agsweeney@gmail.com>
 # Builds and runs the host tests for the portable firmware code (no board needed).
 param(
     [string]$Generator = "Visual Studio 17 2022"

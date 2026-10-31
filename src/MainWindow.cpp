@@ -45,6 +45,9 @@
 #include <QTextEdit>
 #include <QEvent>
 #include <QTimer>
+#include <algorithm>
+#include <QTextBlock>
+#include <QScrollBar>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -62,9 +65,20 @@ QSettings AppSettings() {
 
 // Display only: one instruction per line (drivers such as AutoCAD's write the whole job
 // without line breaks) and visible control characters. The job itself is sent unchanged.
-QString FormatHpglForDisplay(const QByteArray &hpgl, int maxChars) {
+// lineBytes (optional) receives the job byte offset at which each displayed line starts.
+QString FormatHpglForDisplay(const QByteArray &hpgl, int maxChars, QVector<int> *lineBytes = nullptr) {
     QString out;
     out.reserve(qMin(int(hpgl.size() + hpgl.size() / 8), maxChars + 64));
+    if (lineBytes) {
+        lineBytes->clear();
+        lineBytes->append(0);
+    }
+    auto newLine = [&](int nextByte) {
+        out += QLatin1Char('\n');
+        if (lineBytes) {
+            lineBytes->append(nextByte);
+        }
+    };
     for (int i = 0; i < hpgl.size(); i++) {
         if (out.size() >= maxChars) {
             out += QStringLiteral("\n... (%1 more bytes not shown)").arg(hpgl.size() - i);
@@ -75,13 +89,15 @@ QString FormatHpglForDisplay(const QByteArray &hpgl, int maxChars) {
             out += QLatin1Char(';');
             const uchar next = (i + 1 < hpgl.size()) ? uchar(hpgl.at(i + 1)) : 0;
             if (next != '\r' && next != '\n') {
-                out += QLatin1Char('\n');
+                newLine(i + 1);
             }
         } else if (c == '\r') {
             if (i + 1 >= hpgl.size() || hpgl.at(i + 1) != '\n') {
-                out += QLatin1Char('\n');
+                newLine(i + 1);
             }
-        } else if (c == '\n' || c == '\t' || c >= 0x20) {
+        } else if (c == '\n') {
+            newLine(i + 1);
+        } else if (c == '\t' || c >= 0x20) {
             out += QChar(c);
         } else if (c == 0x1b) {
             out += QStringLiteral("<ESC>");
@@ -662,7 +678,7 @@ void MainWindow::BuildUi() {
     connect(m_placeAtOriginCheck, &QCheckBox::toggled, this, [this](bool on) {
         AppSettings().setValue("plot/placeAtOrigin", on);
         if (m_source == SourceKind::Dxf) {
-            m_preview->setPlainText(FormatHpglForDisplay(JobHpgl(), kMaxPreviewChars));
+            SetPreviewText(JobHpgl());
             RebuildPreview();
         }
     });
@@ -1048,7 +1064,7 @@ void MainWindow::LoadDxf(const QString &path) {
     m_dxfDrawingToMmScale = imported.drawingToMmScale;
     m_dxfPolylinesMm = std::move(imported.polylinesMm);
     m_dxfRapidSegmentsMm = std::move(imported.rapidSegmentsMm);
-    m_preview->setPlainText(FormatHpglForDisplay(JobHpgl(), kMaxPreviewChars));
+    SetPreviewText(JobHpgl());
     AppendLog(QStringLiteral("Loaded DXF: %1 (%2 polylines)").arg(path).arg(m_dxfPolylinesMm.size()));
     RebuildPreview();
     if (!m_followPenCheck->isChecked()) {
@@ -1067,7 +1083,7 @@ void MainWindow::LoadHpgl(const QString &path) {
     m_hpglFile = f.readAll();
     m_dxfPolylinesMm.clear();
     m_dxfRapidSegmentsMm.clear();
-    m_preview->setPlainText(FormatHpglForDisplay(m_hpglFile, kMaxPreviewChars));
+    SetPreviewText(m_hpglFile);
     AppendLog(QStringLiteral("Loaded HP-GL: %1 (%2 bytes)").arg(path).arg(m_hpglFile.size()));
     RebuildPreview();
     if (!m_followPenCheck->isChecked()) {
@@ -1115,6 +1131,7 @@ QByteArray MainWindow::JobHpgl() const {
 void MainWindow::RebuildPreview() {
     m_previewStripsMm.clear();
     m_previewRapidsMm.clear();
+    m_previewVertexBytes.clear();
     QVector<PathIssueMarker> markers;
     QString extra;
 
@@ -1133,10 +1150,17 @@ void MainWindow::RebuildPreview() {
         }
         BuildPathIssueMarkers(m_previewStripsMm, true, false, cornerMmS * spmm, spmm, spmm, drawMmS * 60.0,
                               &m_previewRapidsMm, &markers);
+        /* JobHpgl() starts with exactly this text: one PD instruction per strip. */
+        QVector<int> pdOffsets;
+        BuildHpglFromPolylinesMm(m_previewStripsMm, &pdOffsets);
+        for (int s = 0; s < m_previewStripsMm.size(); s++) {
+            m_previewVertexBytes.append(QVector<int>(m_previewStripsMm[s].size(), pdOffsets.value(s, -1)));
+        }
     } else if (m_source == SourceKind::Hpgl) {
         const HpglPreviewResult r = PreviewHpgl(m_hpglFile, m_plotWidthMm, m_plotHeightMm);
         m_previewStripsMm = r.cutStripsMm;
         m_previewRapidsMm = r.rapidSegmentsMm;
+        m_previewVertexBytes = r.cutStripBytes;
         BuildPathIssueMarkers(m_previewStripsMm, false, false, cornerMmS * spmm, spmm, spmm, drawMmS * 60.0,
                               &m_previewRapidsMm, &markers);
         if (r.labelsSkipped > 0) {
@@ -1241,12 +1265,42 @@ void MainWindow::BuildProgressPlan() {
     ResetProgress();
 }
 
+void MainWindow::SetPreviewText(const QByteArray &job) {
+    m_activeLine = -1;
+    m_preview->setExtraSelections({});
+    m_preview->setPlainText(FormatHpglForDisplay(job, kMaxPreviewChars, &m_previewLineBytes));
+}
+
+void MainWindow::ShowActiveLine(int line) {
+    if (line == m_activeLine) {
+        return;
+    }
+    m_activeLine = line;
+    const QTextBlock block = line >= 0 ? m_preview->document()->findBlockByNumber(line) : QTextBlock();
+    if (!block.isValid()) {  // cleared, or past the truncated end of the preview
+        m_preview->setExtraSelections({});
+        return;
+    }
+    QTextEdit::ExtraSelection sel;
+    sel.cursor = QTextCursor(block);
+    sel.format.setBackground(QColor(0x2e, 0x6b, 0x45));
+    sel.format.setForeground(QColor(0xff, 0xff, 0xff));
+    sel.format.setProperty(QTextFormat::FullWidthSelection, true);
+    m_preview->setExtraSelections({sel});
+    // Centre the line vertically; keep the horizontal scroll at the line start.
+    QScrollBar *v = m_preview->verticalScrollBar();
+    const QRect r = m_preview->cursorRect(sel.cursor);
+    v->setValue(v->value() + r.center().y() - m_preview->viewport()->height() / 2);
+    m_preview->horizontalScrollBar()->setValue(0);
+}
+
 void MainWindow::ResetProgress() {
     m_progressShapeShown = -1;
     m_progressSeg = -1;
     m_progressT = 0.f;
     m_progressMs = QDateTime::currentMSecsSinceEpoch();
     m_positionView3D->setProgramProgress({});
+    ShowActiveLine(-1);
 }
 
 // Match the reported pen position to the plan, searching forward only (plotting is sequential)
@@ -1343,6 +1397,21 @@ void MainWindow::PushProgressToView(bool allDone) {
         }
     }
     m_positionView3D->setProgramProgress(done);
+
+    // HP-GL box: highlight and scroll to the instruction drawing the current segment.
+    int line = -1;
+    if (!allDone && m_progressSeg >= 0 && m_progressSeg < m_plan.size() && m_plan[m_progressSeg].cut) {
+        const PlanSeg &cur = m_plan[m_progressSeg];
+        const int byte = m_previewVertexBytes.value(cur.strip).value(cur.vertex + 1, -1);
+        if (byte >= 0 && !m_previewLineBytes.isEmpty()) {
+            /* Last displayed line starting at or before the byte (the move is emitted once its
+             * instruction's terminator or next separator has been read, so step back one). */
+            const int at = qMax(0, byte - 1);
+            line = int(std::upper_bound(m_previewLineBytes.cbegin(), m_previewLineBytes.cend(), at) -
+                       m_previewLineBytes.cbegin()) - 1;
+        }
+    }
+    ShowActiveLine(line);
 }
 
 void MainWindow::ExportHpgl() {
@@ -1550,7 +1619,7 @@ void MainWindow::OnPathIssueQuickFixCloseContour(int stripIndex) {
     }
     strip.append(startP);
     OrderStripsForCutting(&m_dxfPolylinesMm, &m_dxfRapidSegmentsMm);
-    m_preview->setPlainText(FormatHpglForDisplay(JobHpgl(), kMaxPreviewChars));
+    SetPreviewText(JobHpgl());
     AppendLog(QStringLiteral("DXF quick fix: closed strip %1 with a tangent bridge to its start.").arg(stripIndex));
     RebuildPreview();
     PromptSaveDxfAfterGeometryFix();
@@ -1593,7 +1662,7 @@ void MainWindow::OnPathIssueQuickFixMergeAcrossRapid(int rapidPairIndex) {
     m_dxfPolylinesMm.removeAt(rapidPairIndex + 1);
     m_dxfRapidSegmentsMm.remove(flatIdx, 2);
     OrderStripsForCutting(&m_dxfPolylinesMm, &m_dxfRapidSegmentsMm);
-    m_preview->setPlainText(FormatHpglForDisplay(JobHpgl(), kMaxPreviewChars));
+    SetPreviewText(JobHpgl());
     AppendLog(QStringLiteral("DXF quick fix: merged strips %1 and %2 across a pen-up move.")
                   .arg(rapidPairIndex)
                   .arg(rapidPairIndex + 1));

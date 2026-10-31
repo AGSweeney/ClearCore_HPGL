@@ -96,7 +96,19 @@ int main(int argc, char **argv) {
         }
         std::printf("pen-up travel %.0f mm (drawn %.0f mm)\n", air, len);
     }
-    const QByteArray hpgl = BuildHpglFromPolylinesMm(out.polylinesMm).toLatin1() + "\nPU;SP0;\n";
+    QVector<int> pdOffsets;
+    const QByteArray hpgl = BuildHpglFromPolylinesMm(out.polylinesMm, &pdOffsets).toLatin1() + "\nPU;SP0;\n";
+    {
+        /* Active-line tracking: each strip's offset must point at its own PD instruction. */
+        int bad = 0;
+        for (int s = 0; s < out.polylinesMm.size(); s++) {
+            const int o = pdOffsets.value(s, -1);
+            if (out.polylinesMm[s].size() >= 2 && (o < 1 || hpgl.mid(o, 2) != "PD" || hpgl.at(o - 1) != '\n')) {
+                bad++;
+            }
+        }
+        std::printf("PD offsets: %d strips, %d wrong\n", int(out.polylinesMm.size()), bad);
+    }
     std::printf("job HP-GL: %d bytes, %d instructions (';')\n", int(hpgl.size()), int(hpgl.count(';')));
     if (argc > 2) {
         /* Write the job as the app sends it with "Place DXF at origin" on. */

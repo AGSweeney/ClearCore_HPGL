@@ -8,6 +8,8 @@ class PreviewSink : public HpglSink {
 public:
     explicit PreviewSink(HpglPreviewResult *out) : m_out(out) {}
 
+    int byte = 0;  // job byte being fed when the interpreter emits a move
+
     void PenUp() override {
         m_down = false;
         m_stripOpen = false;
@@ -24,9 +26,11 @@ public:
         if (m_down) {
             if (!m_stripOpen) {
                 m_out->cutStripsMm.append(QVector<QVector3D>{m_pos});
+                m_out->cutStripBytes.append(QVector<int>{byte});
                 m_stripOpen = true;
             }
             m_out->cutStripsMm.last().append(p);
+            m_out->cutStripBytes.last().append(byte);
             m_out->drawLengthMm += len;
         } else {
             m_out->rapidSegmentsMm.append(m_pos);
@@ -62,6 +66,7 @@ HpglPreviewResult PreviewHpgl(const QByteArray &hpgl, double plotWidthMm, double
     interp.Init(&sink, plotWidthMm * HPGL_PU_PER_MM, plotHeightMm * HPGL_PU_PER_MM, "7475A");
     for (const char c : hpgl) {
         interp.Feed(uint8_t(c));
+        sink.byte++;
         while (interp.Busy()) {
             interp.Pump();
         }

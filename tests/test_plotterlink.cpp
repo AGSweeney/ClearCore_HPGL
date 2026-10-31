@@ -43,6 +43,35 @@ int main(int argc, char **argv) {
         Check(r.labelsSkipped == 1, "LB counted as skipped");
         Check(qAbs(r.cutStripsMm[0].last().x() - 5.0f) < 1e-4f, "PU coordinates converted to mm");
     }
+    {
+        /* Each pen-down vertex records the job byte just past the character that completed it;
+         * the app highlights the instruction containing (byte - 1). It must be the instruction
+         * that drew the vertex, not the next one. */
+        const QByteArray job = "IN;PU0,0;PD400,0,400,400;PU;PA800,800;PD0,800;PD0,1200;";
+        const HpglPreviewResult r = PreviewHpgl(job, 400, 300);
+        auto instrAt = [&](int byte) {
+            const int at = qMax(0, byte - 1);
+            const int start = job.lastIndexOf(';', at - 1) + 1;
+            return job.mid(start, job.indexOf(';', at) - start);
+        };
+        bool ok = r.cutStripBytes.size() == r.cutStripsMm.size() && r.cutStripsMm.size() == 2;
+        for (int s = 0; ok && s < r.cutStripsMm.size(); s++) {
+            ok = r.cutStripBytes[s].size() == r.cutStripsMm[s].size();
+        }
+        Check(ok, "a job byte for every pen-down vertex");
+        if (ok) {
+            Check(instrAt(r.cutStripBytes[0][1]) == "PD400,0,400,400" &&
+                      instrAt(r.cutStripBytes[0][2]) == "PD400,0,400,400",
+                  "vertices map to the PD that drew them");
+            Check(instrAt(r.cutStripBytes[1][1]) == "PD0,800" && instrAt(r.cutStripBytes[1][2]) == "PD0,1200",
+                  "consecutive PDs map to their own instruction");
+            for (int s = 0; s < 2; s++) {
+                for (int v = 1; v < r.cutStripBytes[s].size(); v++) {
+                    std::printf("    strip %d vertex %d -> \"%s\"\n", s, v, instrAt(r.cutStripBytes[s][v]).constData());
+                }
+            }
+        }
+    }
 
     PlotterLink link;
     if (argc > 2 && QString::fromLocal8Bit(argv[2]) == QLatin1String("--discover-only")) {

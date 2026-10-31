@@ -92,6 +92,8 @@ private:
     void ResetProgress();
     void UpdateProgress(const PlotterLink::Status &status);
     void PushProgressToView(bool allDone = false);
+    void SetPreviewText(const QByteArray &job);
+    void ShowActiveLine(int line);
     void ApplyDeviceConfig(const QStringList &lines);
     void ShowSettingsDialog(const QStringList &configLines);
     void PromptSaveDxfAfterGeometryFix();
@@ -174,6 +176,11 @@ private:
     QByteArray m_hpglFile;
     QVector<QVector<QVector3D>> m_previewStripsMm;
     QVector<QVector3D> m_previewRapidsMm;
+    // Active-line tracking in the HP-GL box: per preview vertex, the job byte of the instruction
+    // that draws it; per displayed line, the job byte it starts at.
+    QVector<QVector<int>> m_previewVertexBytes;
+    QVector<int> m_previewLineBytes;
+    int m_activeLine = -1;
 
     // Plotter (from "config"; defaults match the firmware)
     QMap<QString, QString> m_deviceConfig;

@@ -841,12 +841,17 @@ void OrderStripsForCutting(QVector<QVector<QVector3D>> *strips, QVector<QVector3
     }
 }
 
-QString BuildHpglFromPolylinesMm(const QVector<QVector<QVector3D>> &polylinesMm) {
+QString BuildHpglFromPolylinesMm(const QVector<QVector<QVector3D>> &polylinesMm, QVector<int> *pdOffsets) {
     constexpr double kHpglUnitsPerMm = 40.0;
     auto hpglCoord = [](double mm) -> int { return int(qRound(mm * kHpglUnitsPerMm)); };
     QStringList lines;
     lines << QStringLiteral("IN;SP1;");
-    for (const QVector<QVector3D> &strip : polylinesMm) {
+    int chars = lines.last().size() + 1;  // lines are joined with '\n'
+    if (pdOffsets) {
+        pdOffsets->fill(-1, polylinesMm.size());
+    }
+    for (int s = 0; s < polylinesMm.size(); ++s) {
+        const QVector<QVector3D> &strip = polylinesMm[s];
         if (strip.size() < 2) {
             continue;
         }
@@ -854,13 +859,18 @@ QString BuildHpglFromPolylinesMm(const QVector<QVector<QVector3D>> &polylinesMm)
         lines << QStringLiteral("PU%1,%2;")
                    .arg(hpglCoord(double(p0.x())))
                    .arg(hpglCoord(double(p0.y())));
+        chars += lines.last().size() + 1;
         QStringList pdNums;
         for (int i = 1; i < strip.size(); ++i) {
             const QVector3D &p = strip.at(i);
             pdNums << QStringLiteral("%1,%2").arg(hpglCoord(double(p.x()))).arg(hpglCoord(double(p.y())));
         }
         if (!pdNums.isEmpty()) {
+            if (pdOffsets) {
+                (*pdOffsets)[s] = chars;
+            }
             lines << QStringLiteral("PD%1;").arg(pdNums.join(QLatin1Char(',')));
+            chars += lines.last().size() + 1;
         }
     }
     return lines.join(QLatin1Char('\n'));

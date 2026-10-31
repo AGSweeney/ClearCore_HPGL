@@ -33,7 +33,8 @@ bool ImportDxfFile(const QString &filePath, DxfImportOutput *out);
 void OrderStripsForCutting(QVector<QVector<QVector3D>> *strips, QVector<QVector3D> *rapids);
 
 /// Regenerate HPGL text from tessellated polylines (mm); same rules as import output.
-QString BuildHpglFromPolylinesMm(const QVector<QVector<QVector3D>> &polylinesMm);
+/// pdOffsets (optional): per strip, the character offset of its PD instruction (-1 if skipped).
+QString BuildHpglFromPolylinesMm(const QVector<QVector<QVector3D>> &polylinesMm, QVector<int> *pdOffsets = nullptr);
 
 /// Write minimal ASCII DXF (LWPOLYLINE per strip, bulge 0) in drawing units from mm geometry.
 bool ExportAsciiDxfMinimal(const QString &filePath,

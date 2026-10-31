@@ -11,6 +11,8 @@
 struct HpglPreviewResult {
     /// Pen-down runs in plotter mm (physical frame, origin = plotter 0,0).
     QVector<QVector<QVector3D>> cutStripsMm;
+    /// For each vertex of cutStripsMm: byte offset in the job of the instruction that drew it.
+    QVector<QVector<int>> cutStripBytes;
     /// Pen-up moves as flat start/end pairs (mm).
     QVector<QVector3D> rapidSegmentsMm;
     double drawLengthMm = 0.0;

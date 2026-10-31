@@ -42,7 +42,7 @@ flowchart LR
 | **Motion planner** | Drives the servos as one coordinated machine with junction lookahead and acceleration limits. |
 | **Safety** | Checks the E-stop input, ClearPath alerts and the servos' HLFB "ready" signal continuously. A fault disables the motors, drops the job and latches until cleared. |
 
-The firmware drives two axes and a pen lift, so the natural build is a pen plotter of whatever size your mechanics allow. Any machine that raises and lowers a tool along 2D paths can be driven the same way. Tangential knife offsets for drag-knife cutting are not implemented.
+The firmware drives two axes and a pen lift, so the natural build is a pen plotter of whatever size your mechanics allow. Any machine that raises and lowers a tool along 2D paths can be driven the same way. Tangential knife offsets for drag-knife cutting are not implemented. Laser engraving and cutting is a planned target; see [Roadmap](#roadmap).
 
 ## The desktop app
 
@@ -104,6 +104,27 @@ To set it up:
 4. Optionally, `set job_speed 0` on the board so its own pen speed is used instead of the speed AutoCAD sends.
 
 AutoCAD's path order doesn't matter: the board reorders every job before plotting it.
+
+## Roadmap
+
+### Laser engraving and cutting
+
+The goal: draw a part in AutoCAD, press Plot, and the laser cuts it. No CAM step and no separate laser software, just the plotter driver every CAD package already has.
+
+Much of what a laser needs is already here:
+
+- **Direct from CAD.** The same HP-GL and HP-GL/2 drivers, links and job handling.
+- **Cut order.** The job optimizer already cuts everything inside a contour before the contour itself, so holes are cut before a part drops free or shifts, and travel between cuts is short.
+- **Placement.** The interpreter positions the job on the bed exactly as the driver intended.
+
+Still to build:
+
+- **Laser control.** Fire on pen down with no settle delays, and set power (PWM) per job or per pen.
+- **Power that follows speed.** Scale power with the actual path speed, so corners and slow-downs don't over-burn.
+- **Interlocks.** Enclosure and lid switches, air assist and the E-stop must all be able to cut the beam, not just stop the motion.
+
+> [!CAUTION]
+> None of this is implemented. Do not connect a laser to the pen output: it would fire with plotter timing, without power control or interlocks.
 
 ## Documentation
 

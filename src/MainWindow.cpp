@@ -860,12 +860,10 @@ void MainWindow::OnLinkLost(const QString &reason) {
 
 void MainWindow::OnStatus(const PlotterLink::Status &s) {
     const bool faulted = !s.fault.isEmpty() && s.fault != QLatin1String("none");
-    QString text = QStringLiteral("%1 · %2 · pen %3 · X %4  Y %5 mm")
+    // Pen and position are in the viewport's readout (top right); this line is machine state only.
+    QString text = QStringLiteral("%1 · %2")
                        .arg(s.state.isEmpty() ? QStringLiteral("streaming") : s.state.toUpper(),
-                            s.enabled ? QStringLiteral("enabled") : QStringLiteral("disabled"),
-                            s.penDown ? QStringLiteral("down") : QStringLiteral("up"))
-                       .arg(s.xMm, 0, 'f', 3)
-                       .arg(s.yMm, 0, 'f', 3);
+                            s.enabled ? QStringLiteral("enabled") : QStringLiteral("disabled"));
     if (s.queue > 0) {
         text += QStringLiteral(" · queue %1").arg(s.queue);
     }

@@ -272,7 +272,7 @@ void PositionView3D::initializeGL() {
     f->glEnable(GL_LINE_SMOOTH);
     f->glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
     f->glEnable(GL_MULTISAMPLE);
-    f->glClearColor(0.15f, 0.16f, 0.19f, 1.0f);
+    f->glClearColor(0.03f, 0.035f, 0.04f, 1.0f);  // near-black
 }
 
 void PositionView3D::resizeGL(int w, int h) {

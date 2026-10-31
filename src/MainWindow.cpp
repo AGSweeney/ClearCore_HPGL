@@ -135,6 +135,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     RefreshPorts();
     SetConnectedUi(false);
 
+    m_cycleTick.setInterval(100);
+    connect(&m_cycleTick, &QTimer::timeout, this, &MainWindow::ShowCycleTime);
     connect(&m_link, &PlotterLink::statusUpdated, this, &MainWindow::OnStatus);
     connect(&m_link, &PlotterLink::telemetryUpdated, this, &MainWindow::OnTelemetry);
     connect(&m_link, &PlotterLink::commandFinished, this, &MainWindow::OnCommandFinished);
@@ -438,7 +440,16 @@ void MainWindow::BuildUi() {
         "Open an ASCII DXF (converted to HP-GL) or an HP-GL file (.plt, .hpgl, .hgl). The 3D view shows what "
         "the plotter will draw, using the firmware's own HP-GL interpreter.");
     plotLayout->addLayout(plotControls);
-    plotLayout->addWidget(m_progress);
+    m_cycleLabel = new QLabel("Cycle  -:--.-", plotGroup);
+    m_cycleLabel->setToolTip("Run time from pressing Plot until the plot completes or stops.");
+    m_cycleLabel->setMinimumWidth(130);
+    m_cycleLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_cycleLabel->setStyleSheet("QLabel { font-family: Consolas, 'Courier New', monospace; font-size: 14px; "
+                                "font-weight: 700; color: #e6ebf3; }");
+    auto *progressRow = new QHBoxLayout();
+    progressRow->addWidget(m_progress, 1);
+    progressRow->addWidget(m_cycleLabel);
+    plotLayout->addLayout(progressRow);
     plotLayout->addWidget(m_plotInfoLabel);
     plotLayout->addWidget(m_preview, 1);
     plotTabLayout->addWidget(plotGroup, 1);
@@ -808,6 +819,7 @@ void MainWindow::OnLinkLost(const QString &reason) {
     AppendLog(QStringLiteral("Connection lost: %1").arg(reason));
     m_jobSending = false;
     m_jobAwaitingFinish = false;
+    StopCycleTimer(QStringLiteral("Plot interrupted (connection lost)"));
     SetConnectedUi(false);
 }
 
@@ -847,8 +859,7 @@ void MainWindow::OnStatus(const PlotterLink::Status &s) {
         }
         if (faulted) {
             m_jobAwaitingFinish = false;
-            AppendLog(QStringLiteral("Plot stopped: %1").arg(s.fault));
-            statusBar()->showMessage(QStringLiteral("Plot stopped: %1").arg(s.fault));
+            StopCycleTimer(QStringLiteral("Plot stopped (%1)").arg(s.fault));
         } else if (s.state == QLatin1String("idle") && s.queue == 0 &&
                    (m_jobSawBusy || QDateTime::currentMSecsSinceEpoch() - m_jobSentMs > 3000)) {
             /* A small job is "sent" as soon as the OS buffers it, often before the board has
@@ -856,8 +867,7 @@ void MainWindow::OnStatus(const PlotterLink::Status &s) {
              * (or a few seconds of idle for jobs too short to catch). */
             m_jobAwaitingFinish = false;
             PushProgressToView(true);
-            AppendLog("Plot complete");
-            statusBar()->showMessage("Plot complete");
+            StopCycleTimer(QStringLiteral("Plot complete"));
         }
     }
     UpdateMachineButtons();
@@ -1372,6 +1382,7 @@ void MainWindow::StartPlot() {
         return;
     }
     ResetProgress();
+    StartCycleTimer();
     m_jobSending = true;
     m_jobAwaitingFinish = false;
     m_jobSawBusy = false;
@@ -1387,6 +1398,7 @@ void MainWindow::StopPlot() {
     }
     m_jobSending = false;
     m_jobAwaitingFinish = false;
+    StopCycleTimer(QStringLiteral("Plot aborted"));
     if (m_link.isConnected()) {
         Command("abort");
     }
@@ -1407,11 +1419,47 @@ void MainWindow::OnJobSent() {
     UpdateMachineButtons();
 }
 
+static QString FormatCycle(qint64 ms) {
+    const qint64 tenths = ms / 100;
+    const qint64 h = tenths / 36000;
+    const qint64 m = (tenths / 600) % 60;
+    const qint64 s = (tenths / 10) % 60;
+    const qint64 t = tenths % 10;
+    return h > 0 ? QStringLiteral("%1:%2:%3.%4").arg(h).arg(m, 2, 10, QLatin1Char('0')).arg(s, 2, 10, QLatin1Char('0')).arg(t)
+                 : QStringLiteral("%1:%2.%3").arg(m).arg(s, 2, 10, QLatin1Char('0')).arg(t);
+}
+
+void MainWindow::StartCycleTimer() {
+    m_cycleClock.start();
+    m_cycleRunning = true;
+    m_cycleLabel->setStyleSheet("QLabel { font-family: Consolas, 'Courier New', monospace; font-size: 14px; "
+                                "font-weight: 700; color: #7fe3a0; }");
+    ShowCycleTime();
+    m_cycleTick.start();
+}
+
+void MainWindow::StopCycleTimer(const QString &outcome) {
+    if (!m_cycleRunning) {
+        return;
+    }
+    m_cycleRunning = false;
+    m_cycleTick.stop();
+    ShowCycleTime();
+    m_cycleLabel->setStyleSheet("QLabel { font-family: Consolas, 'Courier New', monospace; font-size: 14px; "
+                                "font-weight: 700; color: #e6ebf3; }");
+    const QString line = QStringLiteral("%1 in %2").arg(outcome, FormatCycle(m_cycleClock.elapsed()));
+    AppendLog(line);
+    statusBar()->showMessage(line);
+}
+
+void MainWindow::ShowCycleTime() {
+    m_cycleLabel->setText(QStringLiteral("Cycle  %1").arg(FormatCycle(m_cycleClock.elapsed())));
+}
+
 void MainWindow::OnJobFailed(const QString &message) {
     m_jobSending = false;
     m_jobAwaitingFinish = false;
-    AppendLog(QStringLiteral("Job failed: %1").arg(message));
-    statusBar()->showMessage(QStringLiteral("Job failed: %1").arg(message));
+    StopCycleTimer(QStringLiteral("Job failed (%1)").arg(message));
     UpdateMachineButtons();
 }
 

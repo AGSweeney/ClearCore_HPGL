@@ -3,10 +3,12 @@
 #include "PlotterLink.h"
 
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QMainWindow>
 #include <QMap>
 #include <QSet>
 #include <QString>
+#include <QTimer>
 #include <QVector>
 #include <QVector3D>
 
@@ -70,6 +72,9 @@ private:
     void SetConnectedUi(bool connected);
     void UpdateMachineButtons();
     void UpdatePenView(const PlotterLink::Status &status);
+    void StartCycleTimer();
+    void StopCycleTimer(const QString &outcome);
+    void ShowCycleTime();
     void AppendLog(const QString &line);
     void Command(const QString &line);
 
@@ -131,6 +136,7 @@ private:
     QPushButton *m_stopButton = nullptr;
     QCheckBox *m_placeAtOriginCheck = nullptr;
     QProgressBar *m_progress = nullptr;
+    QLabel *m_cycleLabel = nullptr;
     QLabel *m_plotInfoLabel = nullptr;
     QTextEdit *m_preview = nullptr;
     QAction *m_saveDxfGeometryAction = nullptr;
@@ -185,6 +191,11 @@ private:
     int m_progressSeg = -1;
     float m_progressT = 0.f;
     qint64 m_progressMs = 0;
+
+    // Cycle timer: Plot pressed -> run finished (complete, stopped, fault or failure).
+    QElapsedTimer m_cycleClock;
+    QTimer m_cycleTick;
+    bool m_cycleRunning = false;
 
     // Job
     bool m_jobSending = false;

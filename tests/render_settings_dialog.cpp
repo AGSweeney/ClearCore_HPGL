@@ -29,9 +29,8 @@ int main(int argc, char **argv) {
         while (t.elapsed() < 1500) {
             QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
         }
-        const bool ok = w.grab().save(QString::fromLocal8Bit(argv[2]));
-        w.close();
-        return ok ? 0 : 1;
+        // No close(): closeEvent would save this window's layout into the user's real settings.
+        return w.grab().save(QString::fromLocal8Bit(argv[2])) ? 0 : 1;
     }
     QFile f(QString::fromLocal8Bit(argv[1]));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {

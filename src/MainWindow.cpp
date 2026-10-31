@@ -43,6 +43,7 @@
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTextEdit>
+#include <QEvent>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -266,7 +267,7 @@ void MainWindow::BuildUi() {
         "QSplitter::handle:horizontal { background: #20242a; width: 3px; }"
         "QSplitter::handle:horizontal:hover { background: #3f4853; }"
         "QFrame#ClearHpglControlSep { color: #4a5563; }"
-        "QLabel#ClearHpglState { background: #242930; border: 1px solid #20242a; border-radius: 2px; padding: 4px 10px; font-family: Consolas, 'Courier New', monospace; }"
+        "QLabel#ClearHpglState { background: rgba(20, 23, 28, 200); color: #e6ebf3; border: 1px solid #3a414c; border-radius: 3px; padding: 4px 10px; font-family: Consolas, 'Courier New', monospace; }"
         "QStatusBar { background: #2c3036; color: #9fa6af; border-top: 1px solid #20242a; padding: 6px 14px; }"
         "QStatusBar::item { border: none; }");
 
@@ -407,10 +408,6 @@ void MainWindow::BuildUi() {
     controlRow2->addWidget(m_clearFaultButton);
     controlRow2->addStretch(1);
     controlLayout->addLayout(controlRow2);
-    m_stateLabel = new QLabel("Not connected", controlGroup);
-    m_stateLabel->setObjectName("ClearHpglState");
-    m_stateLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    controlLayout->addWidget(m_stateLabel);
 
     auto *workTabs = new QTabWidget(mainSplitter);
 
@@ -563,7 +560,13 @@ void MainWindow::BuildUi() {
     pos3dOuter->setContentsMargins(12, 18, 12, 12);
     pos3dOuter->setSpacing(6);
     auto *pos3dHeader = new QHBoxLayout();
-    pos3dHeader->addWidget(new QLabel("Shift/middle/right = pan · wheel = zoom", pos3dGroup));
+    // The hint may be clipped; it must not set the header's minimum width (that would push the
+    // left column wider).
+    auto *viewHint = new QLabel("Shift/middle/right = pan · wheel = zoom", pos3dGroup);
+    viewHint->setToolTip(viewHint->text());
+    viewHint->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    viewHint->setMinimumWidth(0);
+    pos3dHeader->addWidget(viewHint, 1);
     pos3dHeader->addStretch();
     m_pathCheck = new QCheckBox("Path", pos3dGroup);
     m_pathCheck->setToolTip(
@@ -590,6 +593,11 @@ void MainWindow::BuildUi() {
     pos3dOuter->addLayout(pos3dHeader);
     m_positionView3D = new PositionView3D(pos3dGroup);
     m_positionView3D->setDroInches(false);
+    // Plotter state overlaid on the viewport (bottom-left) so its changing width never resizes a panel.
+    m_stateLabel = new QLabel("Not connected", m_positionView3D);
+    m_stateLabel->setObjectName("ClearHpglState");
+    m_stateLabel->setAttribute(Qt::WA_TransparentForMouseEvents);  // orbit / pan / issue hover pass through
+    m_positionView3D->installEventFilter(this);
     pos3dOuter->addWidget(m_positionView3D, 1);
     workH->addWidget(pos3dGroup);
     // Resizing / maximizing gives all extra width to the 3D view; the left column keeps its width.
@@ -677,6 +685,7 @@ void MainWindow::SetConnectedUi(bool connected) {
                              : QStringLiteral("ClearHPGL [Disconnected]"));
     if (!connected) {
         m_stateLabel->setText("Not connected");
+        PlaceStateOverlay();
         m_positionView3D->setDroOverlayText(QStringLiteral("Not connected"));
     }
     statusBar()->showMessage(connected ? "Connected" : "Disconnected");
@@ -869,6 +878,7 @@ void MainWindow::OnStatus(const PlotterLink::Status &s) {
     SetSheet(m_stateLabel, faulted || s.estop == QLatin1String("open")
                                     ? QStringLiteral("QLabel { color: #ffcdd2; border-color: #c62828; }")
                                     : QString());
+    PlaceStateOverlay();
     UpdatePenView(s);
 
     if (m_jobSending || m_jobAwaitingFinish) {
@@ -1472,6 +1482,23 @@ void MainWindow::StopCycleTimer(const QString &outcome) {
     const QString line = QStringLiteral("%1 in %2").arg(outcome, FormatCycle(m_cycleClock.elapsed()));
     AppendLog(line);
     statusBar()->showMessage(line);
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
+    if (watched == m_positionView3D && (event->type() == QEvent::Resize || event->type() == QEvent::Show)) {
+        PlaceStateOverlay();
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::PlaceStateOverlay() {
+    if (!m_stateLabel || !m_positionView3D) {
+        return;
+    }
+    m_stateLabel->adjustSize();
+    const int margin = 10;
+    m_stateLabel->move(margin, qMax(0, m_positionView3D->height() - m_stateLabel->height() - margin));
+    m_stateLabel->raise();
 }
 
 void MainWindow::ShowCycleTime() {

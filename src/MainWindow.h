@@ -40,6 +40,7 @@ public:
 protected:
     void showEvent(QShowEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private slots:
     void RefreshPorts();
@@ -76,6 +77,7 @@ private:
     void StartCycleTimer();
     void StopCycleTimer(const QString &outcome);
     void ShowCycleTime();
+    void PlaceStateOverlay();
     void AppendLog(const QString &line);
     void Command(const QString &line);
 

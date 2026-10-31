@@ -38,6 +38,54 @@ int main(int argc, char **argv) {
     std::printf("strips=%d vertices=%d drawn=%.3f mm\n", int(out.polylinesMm.size()), verts, len);
     std::printf("extent X %.3f..%.3f  Y %.3f..%.3f mm  (%.3f x %.3f mm)\n", minX, maxX, minY, maxY, maxX - minX,
                 maxY - minY);
+    /* Cut order: nothing inside a closed contour may be drawn after it (independent check: a strip
+     * is inside when all of its vertices are, by ray casting). */
+    {
+        auto inside = [](const QVector<QVector3D> &poly, const QVector3D &p) {
+            bool in = false;
+            for (int i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+                if ((poly[i].y() > p.y()) != (poly[j].y() > p.y()) &&
+                    p.x() < poly[i].x() + (p.y() - poly[i].y()) * (poly[j].x() - poly[i].x()) /
+                                              (poly[j].y() - poly[i].y())) {
+                    in = !in;
+                }
+            }
+            return in;
+        };
+        const auto &s = out.polylinesMm;
+        int closed = 0, violations = 0;
+        for (int c = 0; c < s.size(); c++) {
+            if (s[c].size() < 4 || (s[c].first() - s[c].last()).length() > 0.08f) {
+                continue;
+            }
+            closed++;
+            for (int k = c + 1; k < s.size(); k++) {
+                bool all = true;
+                for (const QVector3D &p : s[k]) {
+                    if (!inside(s[c], p)) {
+                        all = false;
+                        break;
+                    }
+                }
+                if (all) {
+                    violations++;
+                    if (violations <= 5) {
+                        std::printf("  order violation: strip %d is inside closed strip %d but drawn after it\n", k, c);
+                    }
+                }
+            }
+        }
+        const auto &last = s.last();
+        float lx0 = FLT_MAX, ly0 = FLT_MAX, lx1 = -FLT_MAX, ly1 = -FLT_MAX;
+        for (const QVector3D &p : last) {
+            lx0 = qMin(lx0, p.x());
+            ly0 = qMin(ly0, p.y());
+            lx1 = qMax(lx1, p.x());
+            ly1 = qMax(ly1, p.y());
+        }
+        std::printf("cut order: %d closed contours, %d violations; last strip spans %.1f x %.1f mm\n", closed,
+                    violations, lx1 - lx0, ly1 - ly0);
+    }
     const QByteArray hpgl = BuildHpglFromPolylinesMm(out.polylinesMm).toLatin1() + "\nPU;SP0;\n";
     std::printf("job HP-GL: %d bytes, %d instructions (';')\n", int(hpgl.size()), int(hpgl.count(';')));
     if (argc > 2) {

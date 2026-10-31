@@ -2,8 +2,10 @@
 
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QTextStream>
 #include <QtMath>
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -588,7 +590,192 @@ bool findEntitiesSection(const QStringList &lines, int *startIdx) {
     return false;
 }
 
+constexpr float kJoinTolMm = 0.01f;   // strip ends closer than this are the same point
+constexpr float kClosedTolMm = 0.08f;  // first ~ last within this: a closed contour
+
+bool isClosedStrip(const QVector<QVector3D> &s) {
+    return s.size() >= 4 && (s.first() - s.last()).length() <= kClosedTolMm;
+}
+
+qint64 cellKey(int cx, int cy) {
+    return (qint64(cx) << 32) ^ qint64(quint32(cy));
+}
+
+/* Join strips end to end where their endpoints coincide (pieces of one outline drawn as separate
+ * LINE / ARC entities). Greedy, in file order: each unused strip is extended forward from its end,
+ * then backward from its start, until it closes or nothing more touches it. */
+QVector<QVector<QVector3D>> chainStrips(const QVector<QVector<QVector3D>> &in) {
+    const float cell = kJoinTolMm * 4.0f;
+    QHash<qint64, QVector<int>> ends;  // endpoint grid cell -> strip indices
+    auto cellOf = [&](const QVector3D &p, int *cx, int *cy) {
+        *cx = int(std::floor(p.x() / cell));
+        *cy = int(std::floor(p.y() / cell));
+    };
+    for (int i = 0; i < in.size(); ++i) {
+        if (in[i].size() < 2 || isClosedStrip(in[i])) {
+            continue;
+        }
+        for (const QVector3D &p : {in[i].first(), in[i].last()}) {
+            int cx, cy;
+            cellOf(p, &cx, &cy);
+            ends[cellKey(cx, cy)].append(i);
+        }
+    }
+    QVector<bool> used(in.size(), false);
+    // Unused strip with an end at p (and whether that end is its start), or -1.
+    auto findAt = [&](const QVector3D &p, bool *atStart) -> int {
+        int cx, cy;
+        cellOf(p, &cx, &cy);
+        for (int dx = -1; dx <= 1; ++dx) {
+            for (int dy = -1; dy <= 1; ++dy) {
+                const auto it = ends.constFind(cellKey(cx + dx, cy + dy));
+                if (it == ends.constEnd()) {
+                    continue;
+                }
+                for (int j : it.value()) {
+                    if (used[j]) {
+                        continue;
+                    }
+                    if ((in[j].first() - p).length() <= kJoinTolMm) {
+                        *atStart = true;
+                        return j;
+                    }
+                    if ((in[j].last() - p).length() <= kJoinTolMm) {
+                        *atStart = false;
+                        return j;
+                    }
+                }
+            }
+        }
+        return -1;
+    };
+    QVector<QVector<QVector3D>> out;
+    for (int i = 0; i < in.size(); ++i) {
+        if (used[i] || in[i].size() < 2) {
+            continue;
+        }
+        used[i] = true;
+        QVector<QVector3D> cur = in[i];
+        for (bool forward : {true, false}) {
+            while (!isClosedStrip(cur)) {
+                bool atStart = false;
+                const int j = findAt(forward ? cur.last() : cur.first(), &atStart);
+                if (j < 0) {
+                    break;
+                }
+                used[j] = true;
+                QVector<QVector3D> piece = in[j];
+                if (forward != atStart) {
+                    std::reverse(piece.begin(), piece.end());
+                }
+                if (forward) {
+                    cur.append(piece.mid(1));  // piece starts at cur's end
+                } else {
+                    piece.removeLast();  // piece ends at cur's start
+                    cur = piece + cur;
+                }
+            }
+        }
+        out.append(cur);
+    }
+    return out;
+}
+
+struct StripBox {
+    float x0, y0, x1, y1;
+    bool contains(const StripBox &o) const {
+        constexpr float e = 1.0e-3f;
+        return o.x0 >= x0 - e && o.y0 >= y0 - e && o.x1 <= x1 + e && o.y1 <= y1 + e;
+    }
+};
+
+bool pointInPolygon(const QVector<QVector3D> &poly, float x, float y) {
+    bool inside = false;
+    for (int i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+        const float yi = poly[i].y(), yj = poly[j].y();
+        if ((yi > y) != (yj > y)) {
+            const float xc = poly[i].x() + (y - yi) * (poly[j].x() - poly[i].x()) / (yj - yi);
+            if (x < xc) {
+                inside = !inside;
+            }
+        }
+    }
+    return inside;
+}
+
+double polygonArea(const QVector<QVector3D> &poly) {
+    double a = 0.0;
+    for (int i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+        a += double(poly[j].x()) * double(poly[i].y()) - double(poly[i].x()) * double(poly[j].y());
+    }
+    return std::abs(a) * 0.5;
+}
+
 } // namespace
+
+void OrderStripsForCutting(QVector<QVector<QVector3D>> *strips, QVector<QVector3D> *rapids) {
+    if (!strips) {
+        return;
+    }
+    const QVector<QVector<QVector3D>> s = chainStrips(*strips);
+    const int n = s.size();
+    QVector<StripBox> box(n);
+    QVector<bool> closed(n);
+    QVector<double> area(n, 0.0);
+    for (int i = 0; i < n; ++i) {
+        StripBox b{s[i][0].x(), s[i][0].y(), s[i][0].x(), s[i][0].y()};
+        for (const QVector3D &p : s[i]) {
+            b.x0 = qMin(b.x0, p.x());
+            b.y0 = qMin(b.y0, p.y());
+            b.x1 = qMax(b.x1, p.x());
+            b.y1 = qMax(b.y1, p.y());
+        }
+        box[i] = b;
+        closed[i] = isClosedStrip(s[i]);
+        if (closed[i]) {
+            area[i] = polygonArea(s[i]);
+        }
+    }
+    // Nesting depth = number of closed contours enclosing the strip. A strip is enclosed when most
+    // of up to 9 sample vertices are inside (robust to shared or touching boundary points).
+    QVector<int> depth(n, 0);
+    for (int i = 0; i < n; ++i) {
+        const int samples = qMin(9, int(s[i].size()));
+        for (int j = 0; j < n; ++j) {
+            if (j == i || !closed[j] || !box[j].contains(box[i]) || (closed[i] && area[j] <= area[i])) {
+                continue;
+            }
+            int inside = 0;
+            for (int k = 0; k < samples; ++k) {
+                const QVector3D &p = s[i][(k * (int(s[i].size()) - 1)) / qMax(1, samples - 1)];
+                inside += pointInPolygon(s[j], p.x(), p.y()) ? 1 : 0;
+            }
+            if (inside * 2 > samples) {
+                depth[i]++;
+            }
+        }
+    }
+    QVector<int> order(n);
+    for (int i = 0; i < n; ++i) {
+        order[i] = i;
+    }
+    // Deepest first, so the outermost contours (depth 0) come last. Within a level, smallest extent
+    // first: an outline left open by a gap still encloses nothing, but it is the largest shape.
+    auto extent = [&](int i) { return double(box[i].x1 - box[i].x0) * double(box[i].y1 - box[i].y0); };
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+        return depth[a] != depth[b] ? depth[a] > depth[b] : extent(a) < extent(b);
+    });
+
+    QVector<QVector3D> newRapids;
+    QVector3D lastEnd;
+    strips->clear();
+    for (int i : order) {
+        appendStripFromPoints(s[i], strips, &newRapids, &lastEnd);
+    }
+    if (rapids) {
+        *rapids = newRapids;
+    }
+}
 
 QString BuildHpglFromPolylinesMm(const QVector<QVector<QVector3D>> &polylinesMm) {
     constexpr double kHpglUnitsPerMm = 40.0;
@@ -655,6 +842,7 @@ bool ImportDxfFile(const QString &filePath, DxfImportOutput *out) {
         return false;
     }
 
+    OrderStripsForCutting(&out->polylinesMm, &out->rapidSegmentsMm);
     out->insunits = ins;
     out->drawingToMmScale = s;
     out->hpgl = buildHpgl(out->polylinesMm);

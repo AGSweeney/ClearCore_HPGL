@@ -1549,6 +1549,7 @@ void MainWindow::OnPathIssueQuickFixCloseContour(int stripIndex) {
         }
     }
     strip.append(startP);
+    OrderStripsForCutting(&m_dxfPolylinesMm, &m_dxfRapidSegmentsMm);
     m_preview->setPlainText(FormatHpglForDisplay(JobHpgl(), kMaxPreviewChars));
     AppendLog(QStringLiteral("DXF quick fix: closed strip %1 with a tangent bridge to its start.").arg(stripIndex));
     RebuildPreview();
@@ -1591,6 +1592,7 @@ void MainWindow::OnPathIssueQuickFixMergeAcrossRapid(int rapidPairIndex) {
     m_dxfPolylinesMm[rapidPairIndex] = a;
     m_dxfPolylinesMm.removeAt(rapidPairIndex + 1);
     m_dxfRapidSegmentsMm.remove(flatIdx, 2);
+    OrderStripsForCutting(&m_dxfPolylinesMm, &m_dxfRapidSegmentsMm);
     m_preview->setPlainText(FormatHpglForDisplay(JobHpgl(), kMaxPreviewChars));
     AppendLog(QStringLiteral("DXF quick fix: merged strips %1 and %2 across a pen-up move.")
                   .arg(rapidPairIndex)

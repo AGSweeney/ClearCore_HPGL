@@ -24,6 +24,13 @@ struct DxfImportOutput {
 
 bool ImportDxfFile(const QString &filePath, DxfImportOutput *out);
 
+/// Order strips for cutting: first join strips whose ends meet (within 0.01 mm) into longer paths,
+/// then draw inside-out -- everything enclosed by a closed contour is drawn before that contour, so
+/// the outermost outline is last (a vinyl or laser cutter would otherwise free the part before its
+/// interior cuts). Within a nesting level, smaller shapes come first (an outline left open by a gap
+/// is still drawn last). Rebuilds the pen-up moves.
+void OrderStripsForCutting(QVector<QVector<QVector3D>> *strips, QVector<QVector3D> *rapids);
+
 /// Regenerate HPGL text from tessellated polylines (mm); same rules as import output.
 QString BuildHpglFromPolylinesMm(const QVector<QVector<QVector3D>> &polylinesMm);
 

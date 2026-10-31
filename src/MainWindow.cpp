@@ -178,8 +178,16 @@ void MainWindow::showEvent(QShowEvent *event) {
         if (w < 8) {
             return;
         }
-        const int leftW = (w * 40) / 100;
+        const int leftW = (w * 33) / 100;  // left column one third; 3D view gets the rest
         m_workAreaSplitter->setSizes({leftW, w - leftW});
+        // Left column: plotter panel at its natural height, log ~28% (or the remembered
+        // height if smaller, never under 150), the drawing / HP-GL tab gets the rest.
+        if (m_mainVSplitter && m_logGroup && m_logGroup->isVisible()) {
+            const int total = m_mainVSplitter->height();
+            const int ctrlH = m_mainVSplitter->widget(0)->sizeHint().height();
+            const int logH = qBound(150, qMin(m_savedLogPaneHeight, (total * 28) / 100), qMax(150, total / 2));
+            m_mainVSplitter->setSizes({ctrlH, qMax(200, total - ctrlH - logH), logH});
+        }
         m_didWorkAreaInitialSplit = true;
     });
 }
@@ -381,21 +389,21 @@ void MainWindow::BuildUi() {
         b->setMinimumHeight(30);
         b->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     }
+    // Two rows keep the left column narrow enough for the 3D view to get most of the width.
     auto *controlRow = new QHBoxLayout();
     controlRow->setSpacing(6);
     controlRow->addWidget(m_enableButton);
     controlRow->addWidget(m_disableButton);
     controlRow->addWidget(m_abortButton);
     controlRow->addWidget(m_pauseButton);
-    auto *sep = new QFrame(controlGroup);
-    sep->setObjectName("ClearHpglControlSep");
-    sep->setFrameShape(QFrame::VLine);
-    sep->setFixedWidth(1);
-    controlRow->addWidget(sep);
-    controlRow->addWidget(m_originButton);
-    controlRow->addWidget(m_clearFaultButton);
     controlRow->addStretch(1);
     controlLayout->addLayout(controlRow);
+    auto *controlRow2 = new QHBoxLayout();
+    controlRow2->setSpacing(6);
+    controlRow2->addWidget(m_originButton);
+    controlRow2->addWidget(m_clearFaultButton);
+    controlRow2->addStretch(1);
+    controlLayout->addLayout(controlRow2);
     m_stateLabel = new QLabel("Not connected", controlGroup);
     m_stateLabel->setObjectName("ClearHpglState");
     m_stateLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -423,7 +431,6 @@ void MainWindow::BuildUi() {
     m_stopButton = new QPushButton("Stop", plotGroup);
     m_stopButton->setToolTip("Stop sending and abort the plot on the board.");
     plotControls->addWidget(m_openButton);
-    plotControls->addWidget(m_placeAtOriginCheck);
     plotControls->addStretch(1);
     plotControls->addWidget(m_plotButton);
     plotControls->addWidget(m_stopButton);
@@ -440,6 +447,7 @@ void MainWindow::BuildUi() {
         "Open an ASCII DXF (converted to HP-GL) or an HP-GL file (.plt, .hpgl, .hgl). The 3D view shows what "
         "the plotter will draw, using the firmware's own HP-GL interpreter.");
     plotLayout->addLayout(plotControls);
+    plotLayout->addWidget(m_placeAtOriginCheck);
     m_cycleLabel = new QLabel("Cycle  -:--.-", plotGroup);
     m_cycleLabel->setToolTip("Run time from pressing Plot until the plot completes or stops.");
     m_cycleLabel->setMinimumWidth(130);
@@ -518,7 +526,7 @@ void MainWindow::BuildUi() {
     // Log
     auto *logGroup = new QGroupBox("Log", mainSplitter);
     m_logGroup = logGroup;
-    logGroup->setMinimumHeight(220);
+    logGroup->setMinimumHeight(150);
     auto *logLayout = new QVBoxLayout(logGroup);
     logLayout->setContentsMargins(14, 18, 14, 12);
     auto *logHeader = new QHBoxLayout();
@@ -540,9 +548,9 @@ void MainWindow::BuildUi() {
     mainSplitter->setCollapsible(1, false);
     mainSplitter->setCollapsible(2, true);
     mainSplitter->setStretchFactor(0, 0);
-    mainSplitter->setStretchFactor(1, 3);
-    mainSplitter->setStretchFactor(2, 2);
-    mainSplitter->setSizes({110, 520, 300});
+    mainSplitter->setStretchFactor(1, 5);  // the drawing / HP-GL view gets most of the height
+    mainSplitter->setStretchFactor(2, 1);
+    mainSplitter->setSizes({140, 560, 180});
     workH->addWidget(mainSplitter);
 
     // 3D view
@@ -576,8 +584,8 @@ void MainWindow::BuildUi() {
     m_positionView3D->setDroInches(false);
     pos3dOuter->addWidget(m_positionView3D, 1);
     workH->addWidget(pos3dGroup);
-    workH->setStretchFactor(0, 2);
-    workH->setStretchFactor(1, 3);
+    workH->setStretchFactor(0, 1);
+    workH->setStretchFactor(1, 2);
     root->addWidget(workH, 1);
     setCentralWidget(central);
 
@@ -1606,14 +1614,15 @@ void MainWindow::SetLogPanelVisible(bool visible) {
         m_logGroup->setMinimumHeight(0);
         m_logGroup->hide();
     } else {
-        m_logGroup->setMinimumHeight(220);
+        m_logGroup->setMinimumHeight(150);
         m_logGroup->show();
         QTimer::singleShot(0, this, [this]() {
             if (!m_logGroup->isVisible()) {
                 return;
             }
             const int total = qMax(400, m_mainVSplitter->height());
-            const int logH = qBound(120, m_savedLogPaneHeight, total - 200);
+            // Remembered height, but never more than ~30% so the drawing view stays the larger.
+            const int logH = qBound(120, m_savedLogPaneHeight, qMax(120, (total * 30) / 100));
             const QList<int> cur = m_mainVSplitter->sizes();
             const int ctrlH = (cur.size() >= 3 && cur[0] > 0) ? qBound(64, cur[0], 200) : 110;
             m_mainVSplitter->setSizes({ctrlH, qMax(200, total - ctrlH - logH), logH});
@@ -1623,7 +1632,7 @@ void MainWindow::SetLogPanelVisible(bool visible) {
 }
 
 void MainWindow::LoadWindowUiSettings() {
-    m_savedLogPaneHeight = qBound(120, AppSettings().value("ui/logPaneHeight", 320).toInt(), 2000);
+    m_savedLogPaneHeight = qBound(150, AppSettings().value("ui/logPaneHeight", 260).toInt(), 2000);
     SetLogPanelVisible(AppSettings().value("ui/logPanelVisible", true).toBool());
     {
         const bool td = AppSettings().value("ui/viewportTopDownLocked", true).toBool();

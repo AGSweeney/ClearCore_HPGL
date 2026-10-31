@@ -6,6 +6,7 @@
 #include "PlotterSettingsDialog.h"
 
 #include <QApplication>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QTextStream>
 
@@ -15,6 +16,22 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     if (argc < 3) {
         return 2;
+    }
+    if (QString::fromLocal8Bit(argv[1]) == QLatin1String("--main")) {
+        /* Main window at its default size, after the first layout pass (initial splitter sizes). */
+        MainWindow w;
+        if (argc > 4) {
+            w.resize(atoi(argv[3]), atoi(argv[4]));  // optional window size
+        }
+        w.show();
+        QElapsedTimer t;
+        t.start();
+        while (t.elapsed() < 1500) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        }
+        const bool ok = w.grab().save(QString::fromLocal8Bit(argv[2]));
+        w.close();
+        return ok ? 0 : 1;
     }
     QFile f(QString::fromLocal8Bit(argv[1]));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {

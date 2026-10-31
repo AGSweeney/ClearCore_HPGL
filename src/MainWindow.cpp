@@ -178,7 +178,10 @@ void MainWindow::showEvent(QShowEvent *event) {
         if (w < 8) {
             return;
         }
-        const int leftW = (w * 33) / 100;  // left column one third; 3D view gets the rest
+        // Left column: the width it was last dragged to (default 430 px), never wider than 45%
+        // of the window, so opening maximized does not start with a wide column.
+        const int savedLeft = AppSettings().value("ui/leftColumnWidth", 430).toInt();
+        const int leftW = qBound(m_workAreaSplitter->widget(0)->minimumSizeHint().width(), savedLeft, (w * 45) / 100);
         m_workAreaSplitter->setSizes({leftW, w - leftW});
         // Left column: plotter panel at its natural height, log ~28% (or the remembered
         // height if smaller, never under 150), the drawing / HP-GL tab gets the rest.
@@ -584,8 +587,9 @@ void MainWindow::BuildUi() {
     m_positionView3D->setDroInches(false);
     pos3dOuter->addWidget(m_positionView3D, 1);
     workH->addWidget(pos3dGroup);
-    workH->setStretchFactor(0, 1);
-    workH->setStretchFactor(1, 2);
+    // Resizing / maximizing gives all extra width to the 3D view; the left column keeps its width.
+    workH->setStretchFactor(0, 0);
+    workH->setStretchFactor(1, 1);
     root->addWidget(workH, 1);
     setCentralWidget(central);
 
@@ -1663,5 +1667,8 @@ void MainWindow::SaveWindowUiSettings() {
         }
     }
     AppSettings().setValue("ui/logPanelVisible", m_logGroup->isVisible());
+    if (m_workAreaSplitter && m_didWorkAreaInitialSplit) {
+        AppSettings().setValue("ui/leftColumnWidth", m_workAreaSplitter->sizes().value(0, 430));
+    }
     AppSettings().setValue("ui/logPaneHeight", m_savedLogPaneHeight);
 }

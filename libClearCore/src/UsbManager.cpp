@@ -318,6 +318,16 @@ bool UsbManager::CBLineStateChanged(usb_cdc_control_signal_t state) {
         if (cdcdf_acm_get_line_coding()->dwDTERate == 1200) {
             SysMgr.ResetBoard(SysManager::RESET_TO_BOOTLOADER);
         }
+        // Keep receiving: hosts may write without asserting DTR (Windows "copy /b file COMn"
+        // opens the port with DTR low). Without this, input stopped for good after any client
+        // closed the port, and such writes blocked forever. Only transmit needs a listening host
+        // (Connected() checks DTR), so Tx stays stopped. (ClearHPGL change.)
+        if (UsbMgr.m_portOpen) {
+            cdcdf_acm_register_callback(CDCDF_ACM_CB_READ, (FUNC_PTR)RxComplete);
+            if (!UsbMgr.m_readBufAvail) {
+                cdcdf_acm_read(UsbMgr.m_usbReadBuf, sizeof(UsbMgr.m_usbReadBuf));
+            }
+        }
     }
 
     // No error
@@ -521,6 +531,13 @@ bool UsbManager::RxComplete(const uint8_t ep,
     UsbMgr.m_readBufAvail = count;
     UsbMgr.m_readBufPtr = UsbMgr.m_usbReadBuf;
     __enable_irq();
+    if (count == 0) {
+        // Zero-length packet (a host ends a transfer that is a multiple of 64 bytes with one, e.g.
+        // Windows writing 512-byte blocks). Nothing to copy, so RxCopyToRingBuf would never
+        // re-arm the read and USB input stopped for good. Re-arm here. (ClearHPGL change.)
+        cdcdf_acm_read(UsbMgr.m_usbReadBuf, sizeof(UsbMgr.m_usbReadBuf));
+        return true;
+    }
     UsbMgr.RxCopyToRingBuf();
     return true;
 }

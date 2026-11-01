@@ -179,6 +179,9 @@ bool ConsoleHandleLine(const char *lineIn, ConsoleOut out) {
         }
         Reply(out, TransportPen(Eq(tok[1], "down")));
     } else if (Eq(cmd, "diag")) {
+        if (n >= 2 && Eq(tok[1], "reset")) {
+            PlotterDiagReset();
+        }
         PlotterDiag(out);
         TransportOptimizerDiag(out);
         TransportUsbDiag(out);

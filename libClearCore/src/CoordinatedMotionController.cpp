@@ -344,20 +344,35 @@ void CoordinatedMotionController::UpdateFast() {
     if (!m_initialized) {
         return;
     }
-    {
-        /* ClearHPGL timing probe: this runs once per TCC0 period (200 us = 24000 cycles). */
-        const uint32_t now = DWT->CYCCNT;
+    /* ClearHPGL timing probe. This runs once per TCC0 period (200 us = 24000 cycles) and must
+     * finish well inside it: an overrun misses the step compare and the drive gets a burst of
+     * pulses nobody counted (a motor jump). Gaps count only while motion runs on from the previous
+     * call: XY is not updated at all while stopped for a pen change. */
+    const uint32_t now = DWT->CYCCNT;
+    if (m_prevUpdateDriving) {
         const uint32_t gap = now - m_lastUpdateCycles;
-        if (m_lastUpdateCycles != 0 && m_active) {
-            if (gap > m_maxUpdateGapCycles) {
-                m_maxUpdateGapCycles = gap;
-            }
-            if (gap > 24000u + 6000u) {  /* more than 50 us late */
-                m_lateUpdates++;
-            }
+        if (gap > m_maxUpdateGapCycles) {
+            m_maxUpdateGapCycles = gap;
         }
-        m_lastUpdateCycles = now;
+        if (gap > 24000u + 6000u) {  /* more than 50 us late */
+            m_lateUpdates++;
+        }
     }
+    m_lastUpdateCycles = now;
+    m_updateStartedMotion = false;
+    UpdateFastBody();
+    const uint32_t took = DWT->CYCCNT - now;
+    if (took > m_maxUpdateCycles) {
+        m_maxUpdateCycles = took;
+        m_maxUpdateKind = (uint8_t)((m_updateStartedMotion ? 2 : 0) + (m_motionType == MOTION_TYPE_ARC ? 1 : 0));
+    }
+    if (took > 18000u) {  /* over 150 us of the 200 us period */
+        m_slowUpdates++;
+    }
+    m_prevUpdateDriving = m_active;
+}
+
+void CoordinatedMotionController::UpdateFastBody() {
     
     // If stop counter is active, continue sending zero steps to clear hardware buffer
     if (m_stopCounter > 0) {
@@ -377,6 +392,7 @@ void CoordinatedMotionController::UpdateFast() {
     
     bool motionComplete = false;
     auto StartNextMotion = [this](bool arcWasActive) -> bool {
+        m_updateStartedMotion = true;  // ClearHPGL timing probe
         if (ProcessNextMotion()) {
             return true;
         }

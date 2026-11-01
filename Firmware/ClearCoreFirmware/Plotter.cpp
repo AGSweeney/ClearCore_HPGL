@@ -725,6 +725,10 @@ void PlotterTelemetry(char *buf, size_t len) {
              g_physPenDown ? 1 : 0, StateName(), (unsigned)g_count);
 }
 
+void PlotterDiagReset() {
+    g_xy.ResetTimingProbe();
+}
+
 void PlotterDiag(void (*out)(const char *line)) {
     char buf[200];
     snprintf(buf, sizeof(buf), "bursts=%lu (samples asking > %ld steps) excess_carried M0=%lu M1=%lu",
@@ -739,6 +743,11 @@ void PlotterDiag(void (*out)(const char *line)) {
              "late_updates(>250us)=%lu",
              (unsigned long)(g_xy.MaxIrqOffCycles() / 120u), (unsigned long)(g_xy.MaxUpdateGapCycles() / 120u),
              (unsigned long)g_xy.LateUpdates());
+    out(buf);
+    static const char *const kKind[] = {"line sample", "arc sample", "line start", "arc start"};
+    snprintf(buf, sizeof(buf), "step interrupt: max=%lu us (%s)  slow(>150us of 200)=%lu",
+             (unsigned long)(g_xy.MaxUpdateCycles() / 120u), kKind[g_xy.MaxUpdateKind() & 3],
+             (unsigned long)g_xy.SlowUpdates());
     out(buf);
     snprintf(buf, sizeof(buf), "controller x=%ld y=%ld  pulses_sent M0=%ld M1=%ld",
              (long)g_xy.CurrentX(), (long)g_xy.CurrentY(), (long)ConnectorM0.PositionRefCommanded(),

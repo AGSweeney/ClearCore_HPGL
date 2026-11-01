@@ -34,9 +34,13 @@ bool ImportDxfFile(const QString &filePath, DxfImportOutput *out);
 /// short. Rebuilds the pen-up moves.
 void OrderStripsForCutting(QVector<QVector<QVector3D>> *strips, QVector<QVector3D> *rapids);
 
-/// Regenerate HPGL text from tessellated polylines (mm); same rules as import output.
-/// pdOffsets (optional): per strip, the character offset of its PD instruction (-1 if skipped).
-QString BuildHpglFromPolylinesMm(const QVector<QVector<QVector3D>> &polylinesMm, QVector<int> *pdOffsets = nullptr);
+/// HP-GL for the strips (mm). With arcs, runs of points that lie on one circle in tessellation-sized
+/// steps (DXF ARC, CIRCLE and bulges, also after joining, reversing and moving) go out as AA true
+/// arcs; everything else as PD chains.
+/// pdOffsets (optional): per strip, the character offset of its first pen-down instruction (PD, or
+/// the PD; before an AA), -1 if skipped.
+QString BuildHpglFromPolylinesMm(const QVector<QVector<QVector3D>> &polylinesMm, QVector<int> *pdOffsets = nullptr,
+                                 bool arcs = true);
 
 /// Write minimal ASCII DXF (LWPOLYLINE per strip, bulge 0) in drawing units from mm geometry.
 bool ExportAsciiDxfMinimal(const QString &filePath,

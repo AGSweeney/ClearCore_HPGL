@@ -103,3 +103,10 @@ if (CLEARHPGL_BUILD_TESTS)
     target_include_directories(dxf_probe PRIVATE src)
     target_link_libraries(dxf_probe PRIVATE Qt6::Core Qt6::Gui)
 endif()
+if (CLEARHPGL_BUILD_TESTS)
+    # test_dxf_arcs: DXF arcs go out as AA and the firmware interpreter draws them where the strips are
+    qt_add_executable(test_dxf_arcs tests/test_dxf_arcs.cpp src/DxfImport.cpp src/DxfImport.h
+        Firmware/ClearCoreFirmware/Hpgl.cpp)
+    target_include_directories(test_dxf_arcs PRIVATE src Firmware/ClearCoreFirmware)
+    target_link_libraries(test_dxf_arcs PRIVATE Qt6::Core Qt6::Gui)
+endif()

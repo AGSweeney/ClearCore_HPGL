@@ -1242,7 +1242,7 @@ void MainWindow::RebuildPreview() {
         }
         BuildPathIssueMarkers(m_previewStripsMm, true, false, cornerMmS * spmm, spmm, spmm, drawMmS * 60.0,
                               &m_previewRapidsMm, &markers);
-        /* JobHpgl() starts with exactly this text: one PD instruction per strip. */
+        /* JobHpgl() starts with exactly this text; a strip's bytes start at its first pen-down instruction. */
         QVector<int> pdOffsets;
         BuildHpglFromPolylinesMm(JobDxfStrips(), &pdOffsets);
         for (int s = 0; s < m_previewStripsMm.size(); s++) {

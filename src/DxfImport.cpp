@@ -249,31 +249,83 @@ void tessellateCircleMm(double cx, double cy, double cz, double r, QVector<QVect
     }
 }
 
-int hpglCoord(double mm) {
-    return int(qRound(mm * kHpglUnitsPerMm));
+/* ---- Arc recovery for HP-GL output ----------------------------------------------------------
+ * ARC, CIRCLE and bulge segments are tessellated above in equal steps of at most pi/16. When a job
+ * is written, a run of points that lies on one circle and turns one way in such steps goes out as
+ * one AA (a true arc on the plotter) instead of a chain of PD chords. Working on the points keeps
+ * every later edit valid: joining, reversing, the entry vertex of a closed contour, placement and
+ * the centre-origin shift all move or reorder points, and the circle is still found. */
+constexpr double kArcStepMax = kPi / 16.0 + 1.0e-4;  // largest tessellation step, plus float slack
+constexpr int kArcMinSegs = 3;  // any two segments fit some circle: three in step are an arc
+constexpr double kArcMinRadiusMm = 0.05;
+constexpr double kArcMaxRadiusMm = 5000.0;
+
+struct FitCircle {
+    double cx = 0.0;
+    double cy = 0.0;
+    double r = 0.0;
+};
+
+bool circleThrough(const QVector3D &a, const QVector3D &b, const QVector3D &c, FitCircle *out) {
+    // relative to a, for precision far from the origin
+    const double bx = double(b.x()) - double(a.x()), by = double(b.y()) - double(a.y());
+    const double cx = double(c.x()) - double(a.x()), cy = double(c.y()) - double(a.y());
+    const double d = 2.0 * (bx * cy - by * cx);
+    if (std::abs(d) < 1.0e-12) {
+        return false;  // collinear
+    }
+    const double b2 = bx * bx + by * by;
+    const double c2 = cx * cx + cy * cy;
+    const double ux = (cy * b2 - by * c2) / d;
+    const double uy = (bx * c2 - cx * b2) / d;
+    out->cx = double(a.x()) + ux;
+    out->cy = double(a.y()) + uy;
+    out->r = std::hypot(ux, uy);
+    return true;
 }
 
-QString buildHpgl(const QVector<QVector<QVector3D>> &polylinesMm) {
-    QStringList lines;
-    lines << QStringLiteral("IN;SP1;");
-    for (const QVector<QVector3D> &strip : polylinesMm) {
-        if (strip.size() < 2) {
-            continue;
+double stepAngle(const FitCircle &c, const QVector3D &p, const QVector3D &q) {
+    const double ax = double(p.x()) - c.cx, ay = double(p.y()) - c.cy;
+    const double bx = double(q.x()) - c.cx, by = double(q.y()) - c.cy;
+    return std::atan2(ax * by - ay * bx, ax * bx + ay * by);
+}
+
+/// s[i..j] lie on one circle and turn one way in steps no larger than the tessellation's.
+/// *sweep: signed total (radians, positive = counter-clockwise).
+bool arcRun(const QVector<QVector3D> &s, int i, int j, FitCircle *c, double *sweep) {
+    // Fit through points a third and two thirds along: s[j] can be s[i] (a whole circle).
+    const int third = (j - i) / 3;
+    if (!circleThrough(s[i], s[i + third], s[i + 2 * third], c) || c->r < kArcMinRadiusMm ||
+        c->r > kArcMaxRadiusMm) {
+        return false;
+    }
+    const double tol = 0.002 + c->r * 1.0e-5;  // points are floats; 0.002 mm is 1/12 plotter unit
+    double total = 0.0;
+    int dir = 0;  // +1 counter-clockwise, -1 clockwise, 0 not known yet
+    for (int k = i; k <= j; ++k) {
+        const double rk = std::hypot(double(s[k].x()) - c->cx, double(s[k].y()) - c->cy);
+        if (std::abs(rk - c->r) > tol) {
+            return false;
         }
-        const QVector3D &p0 = strip.first();
-        lines << QStringLiteral("PU%1,%2;")
-                   .arg(hpglCoord(double(p0.x())))
-                   .arg(hpglCoord(double(p0.y())));
-        QStringList pdNums;
-        for (int i = 1; i < strip.size(); ++i) {
-            const QVector3D &p = strip.at(i);
-            pdNums << QStringLiteral("%1,%2").arg(hpglCoord(double(p.x()))).arg(hpglCoord(double(p.y())));
-        }
-        if (!pdNums.isEmpty()) {
-            lines << QStringLiteral("PD%1;").arg(pdNums.join(QLatin1Char(',')));
+        if (k > i) {
+            const double d = stepAngle(*c, s[k - 1], s[k]);
+            if ((s[k] - s[k - 1]).length() < 1.0e-4f) {
+                continue;  // repeated point (e.g. a closed contour's seam)
+            }
+            const int dk = d > 0 ? 1 : -1;
+            if (std::abs(d) > kArcStepMax || (dir != 0 && dk != dir)) {
+                return false;
+            }
+            dir = dk;
+            total += d;
         }
     }
-    return lines.join(QLatin1Char('\n'));
+    // float points: a full circle's steps can add up to a little over 2 pi
+    if (dir == 0 || std::abs(total) > 2.0 * kPi + 1.0e-3) {
+        return false;
+    }
+    *sweep = total;
+    return true;
 }
 
 void parseLineEntity(const QStringList &lines, int &idx, double s, QVector<QVector<QVector3D>> *polylines,
@@ -843,37 +895,99 @@ void OrderStripsForCutting(QVector<QVector<QVector3D>> *strips, QVector<QVector3
     }
 }
 
-QString BuildHpglFromPolylinesMm(const QVector<QVector<QVector3D>> &polylinesMm, QVector<int> *pdOffsets) {
-    constexpr double kHpglUnitsPerMm = 40.0;
-    auto hpglCoord = [](double mm) -> int { return int(qRound(mm * kHpglUnitsPerMm)); };
+QString BuildHpglFromPolylinesMm(const QVector<QVector<QVector3D>> &polylinesMm, QVector<int> *pdOffsets,
+                                 bool arcs) {
+    auto coord = [](double mm) -> int { return int(qRound(mm * kHpglUnitsPerMm)); };
     QStringList lines;
-    lines << QStringLiteral("IN;SP1;");
-    int chars = lines.last().size() + 1;  // lines are joined with '\n'
+    int chars = 0;
+    auto put = [&](const QString &line) {
+        lines << line;
+        chars += line.size() + 1;  // lines are joined with '\n'
+    };
+    put(QStringLiteral("IN;SP1;"));
     if (pdOffsets) {
         pdOffsets->fill(-1, polylinesMm.size());
     }
     for (int s = 0; s < polylinesMm.size(); ++s) {
         const QVector<QVector3D> &strip = polylinesMm[s];
-        if (strip.size() < 2) {
+        const int n = strip.size();
+        if (n < 2) {
             continue;
         }
-        const QVector3D &p0 = strip.first();
-        lines << QStringLiteral("PU%1,%2;")
-                   .arg(hpglCoord(double(p0.x())))
-                   .arg(hpglCoord(double(p0.y())));
-        chars += lines.last().size() + 1;
-        QStringList pdNums;
-        for (int i = 1; i < strip.size(); ++i) {
-            const QVector3D &p = strip.at(i);
-            pdNums << QStringLiteral("%1,%2").arg(hpglCoord(double(p.x()))).arg(hpglCoord(double(p.y())));
-        }
-        if (!pdNums.isEmpty()) {
-            if (pdOffsets) {
+        const int x0 = coord(double(strip[0].x()));
+        const int y0 = coord(double(strip[0].y()));
+        put(QStringLiteral("PU%1,%2;").arg(x0).arg(y0));
+        // Where the plotter puts the pen (plotter units): an AA can end between whole units.
+        double curX = x0;
+        double curY = y0;
+        bool down = false;
+        QStringList pd;
+        auto penDown = [&](const QString &line) {
+            if (!down && pdOffsets) {
                 (*pdOffsets)[s] = chars;
             }
-            lines << QStringLiteral("PD%1;").arg(pdNums.join(QLatin1Char(',')));
-            chars += lines.last().size() + 1;
+            down = true;
+            put(line);
+        };
+        auto flushPd = [&]() {
+            if (!pd.isEmpty()) {
+                penDown(QStringLiteral("PD%1;").arg(pd.join(QLatin1Char(','))));
+                pd.clear();
+            }
+        };
+        int i = 0;
+        while (i < n - 1) {
+            FitCircle c;
+            double sweep = 0.0;
+            int end = -1;
+            if (arcs) {
+                for (int j = i + kArcMinSegs; j < n; ++j) {
+                    FitCircle cj;
+                    double swj = 0.0;
+                    if (!arcRun(strip, i, j, &cj, &swj)) {
+                        break;
+                    }
+                    c = cj;
+                    sweep = swj;
+                    end = j;
+                }
+            }
+            if (end < 0) {
+                const int x = coord(double(strip[i + 1].x()));
+                const int y = coord(double(strip[i + 1].y()));
+                pd << QStringLiteral("%1,%2").arg(x).arg(y);
+                curX = x;
+                curY = y;
+                ++i;
+                continue;
+            }
+            flushPd();
+            if (!down) {
+                penDown(QStringLiteral("PD;"));
+            }
+            // Sweep from where the pen is to the run's end point (plotter units), in the fitted
+            // direction and number of turns, so the arc ends on that point.
+            const double cx = c.cx * kHpglUnitsPerMm;
+            const double cy = c.cy * kHpglUnitsPerMm;
+            const double a0 = std::atan2(curY - cy, curX - cx);
+            const double a1 = std::atan2(coord(double(strip[end].y())) - cy, coord(double(strip[end].x())) - cx);
+            double sw = a1 - a0;
+            while (sw - sweep > kPi) {
+                sw -= 2.0 * kPi;
+            }
+            while (sweep - sw > kPi) {
+                sw += 2.0 * kPi;
+            }
+            put(QStringLiteral("AA%1,%2,%3;")
+                     .arg(cx, 0, 'f', 2)
+                     .arg(cy, 0, 'f', 2)
+                     .arg(qRadiansToDegrees(sw), 0, 'f', 3));
+            const double r = std::hypot(curX - cx, curY - cy);
+            curX = cx + r * std::cos(a0 + sw);
+            curY = cy + r * std::sin(a0 + sw);
+            i = end;
         }
+        flushPd();
     }
     return lines.join(QLatin1Char('\n'));
 }
@@ -921,7 +1035,7 @@ bool ImportDxfFile(const QString &filePath, DxfImportOutput *out) {
     OrderStripsForCutting(&out->polylinesMm, &out->rapidSegmentsMm);
     out->insunits = ins;
     out->drawingToMmScale = s;
-    out->hpgl = buildHpgl(out->polylinesMm);
+    out->hpgl = BuildHpglFromPolylinesMm(out->polylinesMm);
     out->errorMessage.clear();
     return true;
 }

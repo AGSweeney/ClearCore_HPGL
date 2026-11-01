@@ -80,8 +80,10 @@ bool SettingsFromNvm();
  * NVM blob (no ClearHPGL settings saved yet); nullptr otherwise. */
 const char *SettingsImportedFrom();
 
-/* Console access. Returns nullptr on success or an error message. */
-const char *SettingsSet(const char *key, const char *value, bool motorsEnabled, bool *needsRestart);
+/* Console access. Returns nullptr on success or an error message. Keys marked [disabled] need
+ * motorsEnabled false; keys marked [idle] need jobActive false. */
+const char *SettingsSet(const char *key, const char *value, bool motorsEnabled, bool jobActive,
+                        bool *needsRestart);
 uint16_t SettingsCount();
 /* "key = value    help" for entry i. Returns false past the end. */
 bool SettingsFormat(uint16_t i, char *buf, size_t len);

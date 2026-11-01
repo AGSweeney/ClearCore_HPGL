@@ -223,6 +223,7 @@ enum KeyFlags {
     KF_LIVE = 0,
     KF_DISABLED = 1,  /* only while motors are disabled */
     KF_RESTART = 2,   /* saved now, used after restart */
+    KF_IDLE = 4,      /* only between jobs (motors may stay enabled) */
 };
 
 struct KeyDef {
@@ -244,8 +245,9 @@ static const KeyDef kKeys[] = {
     {"mm_rev_y", K_F32, OFS(mmPerRev[1]), 0.001, 10000, KF_DISABLED, "Y travel per motor revolution (mm)"},
     {"dir_x", K_I8, OFS(dir[0]), -1, 1, KF_DISABLED, "1 or -1: flip X"},
     {"dir_y", K_I8, OFS(dir[1]), -1, 1, KF_DISABLED, "1 or -1: flip Y"},
-    {"width_mm", K_F32, OFS(areaMm[0]), 1, 100000, KF_DISABLED, "plot area X (hard clip)"},
-    {"height_mm", K_F32, OFS(areaMm[1]), 1, 100000, KF_DISABLED, "plot area Y (hard clip)"},
+    /* The plot area is only the hard clip: it can change with the motors enabled, but not mid-job. */
+    {"width_mm", K_F32, OFS(areaMm[0]), 1, 100000, KF_IDLE, "plot area X (hard clip)"},
+    {"height_mm", K_F32, OFS(areaMm[1]), 1, 100000, KF_IDLE, "plot area Y (hard clip)"},
     {"draw_mm_s", K_F32, OFS(drawMmS), 0.1, 10000, KF_LIVE, "default pen-down speed (VS; restores it)"},
     {"travel_mm_s", K_F32, OFS(travelMmS), 0.1, 10000, KF_LIVE, "pen-up speed"},
     {"max_mm_s", K_F32, OFS(maxMmS), 0.1, 10000, KF_LIVE, "upper limit for VS"},
@@ -347,12 +349,14 @@ bool SettingsFormat(uint16_t i, char *buf, size_t len) {
     FormatValue(kKeys[i], value, sizeof(value));
     const char *note = (kKeys[i].flags == KF_DISABLED) ? " [disabled]"
                        : (kKeys[i].flags == KF_RESTART) ? " [restart]"
+                       : (kKeys[i].flags == KF_IDLE)    ? " [idle]"
                                                         : "";
     snprintf(buf, len, "%-16s = %-16s %s%s", kKeys[i].name, value, kKeys[i].help, note);
     return true;
 }
 
-const char *SettingsSet(const char *key, const char *value, bool motorsEnabled, bool *needsRestart) {
+const char *SettingsSet(const char *key, const char *value, bool motorsEnabled, bool jobActive,
+                        bool *needsRestart) {
     if (needsRestart) {
         *needsRestart = false;
     }
@@ -371,6 +375,9 @@ const char *SettingsSet(const char *key, const char *value, bool motorsEnabled, 
     }
     if ((k->flags & KF_DISABLED) && motorsEnabled) {
         return "disable motors first";
+    }
+    if ((k->flags & KF_IDLE) && jobActive) {
+        return "a job is running; change it when the plotter is idle";
     }
     uint8_t *base = (uint8_t *)&g_settings + k->offset;
     if (k->type == K_IP) {

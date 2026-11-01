@@ -195,6 +195,8 @@ private:
     double m_plotWidthMm = 400.0;
     double m_plotHeightMm = 300.0;
     bool m_settingsDialogPending = false;
+    // "set" replies that failed since the settings dialog was applied; shown with the next config.
+    QStringList m_settingsErrors;
     QSet<QString> m_discoverySeen;
 
     // Plot progress: the planned path as ordered segments (cuts, plus the pen-up hop to each

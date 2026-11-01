@@ -138,8 +138,10 @@ PlotterSettingsDialog::PlotterSettingsDialog(const QStringList &configLines, QWi
             e.flag = QStringLiteral("disabled");
         } else if (e.help.endsWith(QLatin1String("[restart]"))) {
             e.flag = QStringLiteral("restart");
+        } else if (e.help.endsWith(QLatin1String("[idle]"))) {
+            e.flag = QStringLiteral("idle");
         }
-        e.help.remove(QRegularExpression(QStringLiteral("\\s*\\[(disabled|restart)\\]$")));
+        e.help.remove(QRegularExpression(QStringLiteral("\\s*\\[(disabled|restart|idle)\\]$")));
         entries.insert(m.captured(1), e);
         order << m.captured(1);
     }
@@ -147,8 +149,9 @@ PlotterSettingsDialog::PlotterSettingsDialog(const QStringList &configLines, QWi
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(14, 14, 14, 12);
     auto *note = new QLabel(
-        "Changes are saved to the plotter when you press OK. Settings marked “motors disabled” need the "
-        "motors disabled first; “after restart” settings take effect when the plotter restarts.",
+        "Changes are saved to the plotter when you press OK. Settings marked “motors disabled” disable the "
+        "motors to apply (they enable again with the next job); “between jobs” settings can't change while a "
+        "job is plotting; “after restart” settings take effect when the plotter restarts.",
         this);
     note->setObjectName("Note");
     note->setWordWrap(true);
@@ -168,6 +171,7 @@ PlotterSettingsDialog::PlotterSettingsDialog(const QStringList &configLines, QWi
         const Entry e = entries.value(key);
         Field f;
         f.original = e.value;
+        f.flag = e.flag;
         auto *row = new QWidget(page);
         auto *rowLayout = new QHBoxLayout(row);
         rowLayout->setContentsMargins(0, 0, 0, 0);
@@ -197,7 +201,10 @@ PlotterSettingsDialog::PlotterSettingsDialog(const QStringList &configLines, QWi
             rowLayout->addWidget(u);
         }
         if (!e.flag.isEmpty()) {
-            auto *badge = new QLabel(e.flag == QLatin1String("disabled") ? "motors disabled" : "after restart", row);
+            const QString text = e.flag == QLatin1String("disabled") ? QStringLiteral("motors disabled")
+                                 : e.flag == QLatin1String("idle")   ? QStringLiteral("between jobs")
+                                                                     : QStringLiteral("after restart");
+            auto *badge = new QLabel(text, row);
             badge->setObjectName("Badge");
             badge->setMinimumWidth(96);
             rowLayout->addWidget(badge);
@@ -268,4 +275,15 @@ QStringList PlotterSettingsDialog::changedCommands() const {
         }
     }
     return cmds;
+}
+
+bool PlotterSettingsDialog::changesNeedMotorsDisabled() const {
+    for (auto it = m_fields.cbegin(); it != m_fields.cend(); ++it) {
+        const Field &f = it.value();
+        const QString v = f.combo ? f.combo->currentData().toString() : f.edit->text().trimmed();
+        if (f.flag == QLatin1String("disabled") && !v.isEmpty() && v != f.original) {
+            return true;
+        }
+    }
+    return false;
 }

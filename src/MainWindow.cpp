@@ -988,7 +988,16 @@ void MainWindow::OnCommandFinished(const QString &command, bool ok, const QStrin
     if (command == QLatin1String("status") || command.startsWith(QLatin1String("tel "))) {
         return;  /* background poll / optional telemetry (older firmware rejects it quietly) */
     }
+    if (command.startsWith(QLatin1String("set ")) && !ok) {
+        m_settingsErrors << QStringLiteral("%1: %2").arg(command.mid(4), lines.isEmpty() ? QString() : lines.last());
+    }
     if (command == QLatin1String("config")) {
+        if (!m_settingsErrors.isEmpty()) {
+            QMessageBox::warning(this, "Plotter settings",
+                                 QStringLiteral("These settings were not changed:\n\n%1")
+                                     .arg(m_settingsErrors.join(QLatin1Char('\n'))));
+            m_settingsErrors.clear();
+        }
         if (ok) {
             ApplyDeviceConfig(lines);
             if (m_settingsDialogPending) {
@@ -1064,6 +1073,22 @@ void MainWindow::ShowSettingsDialog(const QStringList &configLines) {
         return;
     }
     const QStringList cmds = dlg.changedCommands();
+    if (cmds.isEmpty()) {
+        return;
+    }
+    const PlotterLink::Status &s = m_link.status();
+    const bool busy = s.state == QLatin1String("plotting") || s.state == QLatin1String("paused") ||
+                      s.state == QLatin1String("buffering") || s.queue > 0;
+    if (busy) {
+        QMessageBox::information(this, "Plotter settings",
+                                 "The plotter is running a job. Change settings when it is idle.");
+        return;
+    }
+    m_settingsErrors.clear();
+    if (dlg.changesNeedMotorsDisabled() && s.enabled) {
+        Command("disable");  /* steps/rev, direction, pen mode: they enable again with the next job */
+        AppendLog("Motors disabled to apply plotter settings.");
+    }
     for (const QString &cmd : cmds) {
         Command(cmd);
     }

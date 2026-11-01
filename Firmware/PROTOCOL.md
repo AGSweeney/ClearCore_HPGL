@@ -137,7 +137,7 @@ Every command ends with a line starting `ok` or `error:`.
 |---------|--------|
 | `status` | `state=idle\|buffering\|plotting\|paused\|disabled\|waiting_enable\|fault`, position in mm, pen, queue depth, counters, link stats |
 | `config` | every setting with its current value |
-| `set <key> <value>` | validate, apply, save to NVM. `[disabled]` keys need motors disabled; `[restart]` keys apply after `restart`. |
+| `set <key> <value>` | validate, apply, save to NVM. `[disabled]` keys need motors disabled; `[idle]` keys need no job running (motors may stay enabled); `[restart]` keys apply after `restart`. |
 | `defaults` | factory settings (motors disabled) |
 | `enable` / `disable` | motor enable |
 | `abort` | stop, drop the current job, raise the pen |
@@ -159,7 +159,7 @@ Stored in the NVM user page with magic `CHPG`, so blobs left by ClearAI (`CAIC`)
 | `steps_rev_x`, `steps_rev_y` | 800 | disabled |
 | `mm_rev_x`, `mm_rev_y` | 5.0 | disabled |
 | `dir_x`, `dir_y` | 1 (or -1) | disabled |
-| `width_mm`, `height_mm` | 400, 300 | disabled |
+| `width_mm`, `height_mm` | 400, 300 | idle (no job running) |
 | `draw_mm_s`, `travel_mm_s`, `max_mm_s` | 100, 200, 250 | live |
 | `accel_mm_s2`, `corner_mm_s` | 2000, 20 | live |
 | `pen_mode` | 0 (IO) / 1 (Z on M2) | disabled |

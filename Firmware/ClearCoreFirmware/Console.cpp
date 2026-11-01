@@ -130,7 +130,8 @@ bool ConsoleHandleLine(const char *lineIn, ConsoleOut out) {
             return false;
         }
         bool restart = false;
-        const char *err = SettingsSet(tok[1], tok[2], PlotterEnabled(), &restart);
+        const char *err = SettingsSet(tok[1], tok[2], PlotterEnabled(),
+                                      TransportJobActive() || !PlotterIdle(), &restart);
         if (err) {
             Reply(out, err);
             return false;

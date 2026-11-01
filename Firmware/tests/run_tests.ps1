@@ -12,7 +12,7 @@ if ($LASTEXITCODE -ne 0) { throw "CMake configure failed." }
 cmake --build $build --config Release
 if ($LASTEXITCODE -ne 0) { throw "Test build failed." }
 
-foreach ($name in @("test_hpgl", "test_interp")) {
+foreach ($name in @("test_hpgl", "test_interp", "test_arc")) {
     $exe = Join-Path $build "Release\$name.exe"
     if (-not (Test-Path -LiteralPath $exe)) { $exe = Join-Path $build "$name.exe" }
     & $exe

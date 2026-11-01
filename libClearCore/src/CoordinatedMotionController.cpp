@@ -808,6 +808,51 @@ bool CoordinatedMotionController::ValidateLinear(int32_t /*endX*/, int32_t /*end
     return true;
 }
 
+// ClearHPGL: only the main thread adds to the motion queue; the step interrupt only takes from its
+// head. So the start point of a new block (the previous block's end, or where the running move
+// ends) cannot change between this snapshot and CommitQueuedMotion(), and the free slot at the tail
+// is not read by the interrupt until the count says it is there. The block is built with
+// interrupts enabled; they are off only for the snapshot and the commit (QueueArc used to compute
+// sin/cos in software doubles with them off: up to 190 us, close to the 200 us step period).
+bool CoordinatedMotionController::QueueStartPoint(int32_t *startX, int32_t *startY) {
+    __disable_irq();
+    const uint32_t irqOffStart = DWT->CYCCNT;  // ClearHPGL timing probe
+    if (m_motionQueueCount >= ARC_QUEUE_SIZE) {
+        __enable_irq();
+        return false;
+    }
+    *startX = m_currentX;
+    *startY = m_currentY;
+    if (m_motionQueueCount > 0) {
+        uint8_t prevIdx = (m_motionQueueTail + ARC_QUEUE_SIZE - 1) % ARC_QUEUE_SIZE;
+        *startX = m_motionQueue[prevIdx].endX;
+        *startY = m_motionQueue[prevIdx].endY;
+    } else if (m_active) {
+        *startX = m_activeTargetX;
+        *startY = m_activeTargetY;
+    }
+    NoteIrqOff(irqOffStart);
+    __enable_irq();
+    return true;
+}
+
+void CoordinatedMotionController::CommitQueuedMotion() {
+    m_motionQueue[m_motionQueueTail].valid = true;
+    __disable_irq();
+    const uint32_t irqOffStart = DWT->CYCCNT;  // ClearHPGL timing probe
+    m_motionQueueTail = (m_motionQueueTail + 1) % ARC_QUEUE_SIZE;
+    m_motionQueueCount++;
+    NoteIrqOff(irqOffStart);
+    __enable_irq();
+}
+
+void CoordinatedMotionController::NoteIrqOff(uint32_t irqOffStart) {
+    const uint32_t off = DWT->CYCCNT - irqOffStart;
+    if (off > m_maxIrqOffCycles) {
+        m_maxIrqOffCycles = off;
+    }
+}
+
 bool CoordinatedMotionController::QueueArcTo(int32_t centerX, int32_t centerY,
                                             int32_t endX, int32_t endY,
                                             bool clockwise) {
@@ -890,22 +935,11 @@ bool CoordinatedMotionController::QueueArc(int32_t centerX, int32_t centerY,
         return true;
     }
 
-    // Planner-enabled path
-    __disable_irq();
-    const uint32_t irqOffStart = DWT->CYCCNT;  // ClearHPGL timing probe
-    if (m_motionQueueCount >= ARC_QUEUE_SIZE) {
-        __enable_irq();
+    // Planner-enabled path. ClearHPGL: the double-precision maths (software doubles on the M4F)
+    // runs with interrupts enabled; see QueueStartPoint() and CommitQueuedMotion().
+    int32_t startX, startY;
+    if (!QueueStartPoint(&startX, &startY)) {
         return false;
-    }
-    int32_t startX = m_currentX;
-    int32_t startY = m_currentY;
-    if (m_motionQueueCount > 0) {
-        uint8_t prevIdx = (m_motionQueueTail + ARC_QUEUE_SIZE - 1) % ARC_QUEUE_SIZE;
-        startX = m_motionQueue[prevIdx].endX;
-        startY = m_motionQueue[prevIdx].endY;
-    } else if (m_active) {
-        startX = m_activeTargetX;
-        startY = m_activeTargetY;
     }
     double sn = startAngle;
     double en = endAngle;
@@ -946,16 +980,7 @@ bool CoordinatedMotionController::QueueArc(int32_t centerX, int32_t centerY,
     motion.arc.startAngle = sn;
     motion.arc.endAngle = en;
     motion.arc.clockwise = clockwise;
-    motion.valid = true;
-    m_motionQueueTail = (tail + 1) % ARC_QUEUE_SIZE;
-    m_motionQueueCount++;
-    {
-        const uint32_t off = DWT->CYCCNT - irqOffStart;  // ClearHPGL timing probe
-        if (off > m_maxIrqOffCycles) {
-            m_maxIrqOffCycles = off;
-        }
-    }
-    __enable_irq();
+    CommitQueuedMotion();
     if (kUseGrblPlanner) {
         PlanQueue();  // interrupts enabled; see PlanQueue()
     }
@@ -1025,22 +1050,10 @@ bool CoordinatedMotionController::QueueLinear(int32_t endX, int32_t endY) {
         return true;
     }
 
-    // Planner-enabled path
-    __disable_irq();
-    const uint32_t irqOffStart = DWT->CYCCNT;  // ClearHPGL timing probe
-    if (m_motionQueueCount >= ARC_QUEUE_SIZE) {
-        __enable_irq();
+    // Planner-enabled path (maths with interrupts enabled, as in QueueArc)
+    int32_t startX, startY;
+    if (!QueueStartPoint(&startX, &startY)) {
         return false;
-    }
-    int32_t startX = m_currentX;
-    int32_t startY = m_currentY;
-    if (m_motionQueueCount > 0) {
-        uint8_t prevIdx = (m_motionQueueTail + ARC_QUEUE_SIZE - 1) % ARC_QUEUE_SIZE;
-        startX = m_motionQueue[prevIdx].endX;
-        startY = m_motionQueue[prevIdx].endY;
-    } else if (m_active) {
-        startX = m_activeTargetX;
-        startY = m_activeTargetY;
     }
     int32_t dx = endX - startX;
     int32_t dy = endY - startY;
@@ -1065,16 +1078,7 @@ bool CoordinatedMotionController::QueueLinear(int32_t endX, int32_t endY) {
     motion.endY = endY;
     motion.linear.endX = endX;
     motion.linear.endY = endY;
-    motion.valid = true;
-    m_motionQueueTail = (tail + 1) % ARC_QUEUE_SIZE;
-    m_motionQueueCount++;
-    {
-        const uint32_t off = DWT->CYCCNT - irqOffStart;  // ClearHPGL timing probe
-        if (off > m_maxIrqOffCycles) {
-            m_maxIrqOffCycles = off;
-        }
-    }
-    __enable_irq();
+    CommitQueuedMotion();
     if (kUseGrblPlanner) {
         PlanQueue();  // interrupts enabled; see PlanQueue()
     }

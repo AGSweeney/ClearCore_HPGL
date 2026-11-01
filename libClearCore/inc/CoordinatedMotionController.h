@@ -608,6 +608,10 @@ private:
     
     ArcInterpolator m_arcInterpolator;
     LinearInterpolator m_linearInterpolator;
+    // ClearHPGL: build queue blocks with interrupts enabled (see QueueStartPoint in the .cpp).
+    bool QueueStartPoint(int32_t *startX, int32_t *startY);
+    void CommitQueuedMotion();
+    void NoteIrqOff(uint32_t irqOffStart);
     // QueueArcTo hands its exact end point to QueueArc through these.
     bool m_exactEndPending = false;
     int32_t m_exactEndX = 0;

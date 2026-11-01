@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -336,6 +337,22 @@ static void TestNativeArcs() {
         f.sink.Clear();
         FeedAll(f.h, "IN;IW0,0,1200,2000;PU1000,1000;CI100;");  /* touches nothing */
         CHECK(f.sink.Joined().find("A1000,1000>1100,1000@360") != std::string::npos);
+    }
+    {
+        /* A drawing placed at the origin touches the bed edge; an arc fitted to whole-unit end
+         * points reaches past it by rounding. That is not leaving the bed: no clipping, no lift. */
+        printf("native arcs / chords: rounding past the bed edge does not lift the pen\n");
+        ArcFixture f;
+        FeedAll(f.h, "IN;PU0,100;PD;AA100,99.999,90;PD200,0;PU;");
+        const std::string a = f.sink.Joined();
+        CHECK(a.find('A') != std::string::npos);
+        CHECK(std::count(a.begin(), a.end(), 'U') == 1);
+        CHECK(std::count(a.begin(), a.end(), 'D') == 1);
+        Fixture c;  /* no native arcs: the same arc as chords */
+        FeedAll(c.h, "IN;PU0,100;PD;AA100,99.999,90;PD200,0;PU;");
+        const std::string b = c.sink.Joined();
+        CHECK(std::count(b.begin(), b.end(), 'U') == 1);
+        CHECK(std::count(b.begin(), b.end(), 'D') == 1);
     }
     {
         printf("native arcs: buffered (optimizer) jobs are chords, pass-through forwards\n");

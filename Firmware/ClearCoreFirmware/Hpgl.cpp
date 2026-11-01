@@ -13,6 +13,10 @@
 #endif
 
 static const double kEps = 1e-6;
+/* Geometry this close outside the clip area (half a plotter unit, 0.0125 mm) counts as inside.
+ * Drawings placed on the bed edge reach past it by rounding (an arc fitted to whole-unit end
+ * points by ~0.001 unit); without slack their chords were clipped and the pen lifted at the edge. */
+static const double kClipSlackPu = 0.5;
 static const char kEtx = 0x03;
 static const double kDefaultChordDeg = 5.0;
 static const double kMinChordDeg = 0.5;
@@ -30,6 +34,11 @@ static char Upper(uint8_t c) {
 
 static bool SamePoint(double ax, double ay, double bx, double by) {
     return fabs(ax - bx) < kEps && fabs(ay - by) < kEps;
+}
+
+/* Close enough that the pen stays down: a point moved onto the edge by ClampHard. */
+static bool PenContinues(double ax, double ay, double bx, double by) {
+    return fabs(ax - bx) <= kClipSlackPu && fabs(ay - by) <= kClipSlackPu;
 }
 
 /* Integers print without a fraction; anything else with up to 4 decimals. */
@@ -370,7 +379,8 @@ void HpglInterpreter::PhysicalMove(Pt p) {
     }
 }
 
-/* The window (when on) intersected with the hard clip; false when they do not overlap. */
+/* The window (when on) intersected with the hard clip, widened by kClipSlackPu; false when they do
+ * not overlap. */
 bool HpglInterpreter::ClipBox(double *xmin, double *ymin, double *xmax, double *ymax) const {
     *xmin = 0;
     *ymin = 0;
@@ -382,7 +392,21 @@ bool HpglInterpreter::ClipBox(double *xmin, double *ymin, double *xmax, double *
         *xmax = fmin(*xmax, m_winHi.x);
         *ymax = fmin(*ymax, m_winHi.y);
     }
-    return !(*xmin > *xmax + kEps || *ymin > *ymax + kEps);
+    if (*xmin > *xmax + kEps || *ymin > *ymax + kEps) {
+        return false;
+    }
+    *xmin -= kClipSlackPu;
+    *ymin -= kClipSlackPu;
+    *xmax += kClipSlackPu;
+    *ymax += kClipSlackPu;
+    return true;
+}
+
+/* The pen is already at p: exactly, or (pen down) within the clip slack, where lifting it to move
+ * a fraction of a unit onto the edge would only leave a dot and a stop. */
+bool HpglInterpreter::AtPhysPos(Pt p) const {
+    return m_physDown ? PenContinues(m_physPos.x, m_physPos.y, p.x, p.y)
+                      : SamePoint(m_physPos.x, m_physPos.y, p.x, p.y);
 }
 
 /* Liang-Barsky against ClipBox(). */
@@ -461,9 +485,10 @@ void HpglInterpreter::LogicalPenDown() {
     if (!ClipSegment(m_pos, m_pos, &t0, &t1)) {
         return;  /* outside the window: stays up until a segment comes back in */
     }
-    if (!SamePoint(m_physPos.x, m_physPos.y, m_pos.x, m_pos.y)) {
+    const Pt p = ClampHard(m_pos);  /* within kClipSlackPu outside: onto the edge */
+    if (!AtPhysPos(p)) {
         PhysicalPen(false);
-        PhysicalMove(m_pos);
+        PhysicalMove(p);
     }
     PhysicalPen(true);
 }
@@ -486,7 +511,9 @@ void HpglInterpreter::LineToPu(Pt target) {
     s.y = start.y + (target.y - start.y) * t0;
     e.x = start.x + (target.x - start.x) * t1;
     e.y = start.y + (target.y - start.y) * t1;
-    if (!SamePoint(m_physPos.x, m_physPos.y, s.x, s.y)) {
+    s = ClampHard(s);  /* within kClipSlackPu outside: onto the edge */
+    e = ClampHard(e);
+    if (!AtPhysPos(s)) {
         PhysicalPen(false);
         PhysicalMove(s);
     }
@@ -589,9 +616,10 @@ bool HpglInterpreter::NativeArc(const Op &op) {
     if (!ArcInsideClip(c, r, atan2(s.y - c.y, s.x - c.x), sweepDeg * M_PI / 180.0)) {
         return false;
     }
-    if (!SamePoint(m_physPos.x, m_physPos.y, s.x, s.y)) {
+    const Pt sc = ClampHard(s);
+    if (!AtPhysPos(sc)) {
         PhysicalPen(false);
-        PhysicalMove(s);
+        PhysicalMove(sc);
     }
     PhysicalPen(true);
     const Pt cq = LogicalToPhysical(c);

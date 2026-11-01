@@ -173,6 +173,7 @@ private:
     void PhysicalMove(Pt p);
     void PhysicalPen(bool down);
     bool ClipBox(double *xmin, double *ymin, double *xmax, double *ymax) const;
+    bool AtPhysPos(Pt p) const;
     bool ClipSegment(Pt a, Pt b, double *t0, double *t1) const;
     bool ArcInsideClip(Pt c, double r, double a0, double sweep) const;
 

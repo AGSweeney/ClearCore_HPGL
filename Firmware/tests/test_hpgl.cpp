@@ -264,6 +264,100 @@ static void TestArcs() {
     CHECK_EQ_STR(f.sink.Joined(), "D M1100,1000 U");  /* clockwise from the top ends at the right */
 }
 
+/* A sink that takes native arcs (as the plotter does). */
+class ArcSink : public MockSink {
+public:
+    bool ArcTo(double cx, double cy, double ex, double ey, double sweep) override {
+        x = ex;
+        y = ey;
+        char b[96];
+        snprintf(b, sizeof(b), "A%.0f,%.0f>%.0f,%.0f@%.0f", cx, cy, ex, ey, sweep);
+        events.push_back(b);
+        if (room > 0) room--;
+        return true;
+    }
+};
+
+struct ArcFixture {
+    ArcSink sink;
+    HpglInterpreter h;
+    ArcFixture() { h.Init(&sink, kW, kH, "7475A"); }
+};
+
+static void TestNativeArcs() {
+    printf("native arcs\n");
+    {
+        ArcFixture f;
+        FeedAll(f.h, "PU1000,1000;CI100;");
+        CHECK_EQ_STR(f.sink.Joined(), "M1000,1000 M1100,1000 D A1000,1000>1100,1000@360 U M1000,1000");
+        f.sink.Clear();
+        FeedAll(f.h, "PU1100,1000;PD;AA1000,1000,90;PU;");
+        CHECK_EQ_STR(f.sink.Joined(), "M1100,1000 D A1000,1000>1000,1100@90 U");
+        f.sink.Clear();
+        FeedAll(f.h, "PD;AR0,-100,-90;PU;");  /* clockwise from the top */
+        CHECK_EQ_STR(f.sink.Joined(), "D A1000,1000>1100,1000@-90 U");
+        f.sink.Clear();
+        FeedAll(f.h, "PU1000,1000;EW100,0,90;");
+        CHECK_EQ_STR(f.sink.Joined(), "M1000,1000 D M1100,1000 A1000,1000>1000,1100@90 M1000,1000 U");
+        f.sink.Clear();
+        /* a line after the arc continues from the arc's end */
+        FeedAll(f.h, "PU1100,1000;PD;AA1000,1000,90;PD1000,1200;PU;");
+        CHECK_EQ_STR(f.sink.Joined(), "M1100,1000 D A1000,1000>1000,1100@90 M1000,1200 U");
+    }
+    {
+        printf("native arcs: pen up stays chords\n");
+        ArcFixture f;
+        FeedAll(f.h, "PU1100,1000;AA1000,1000,90,45;");
+        CHECK_EQ_STR(f.sink.Joined(), "M1100,1000 M1071,1071 M1000,1100");
+    }
+    {
+        printf("native arcs: rotation keeps direction, mirrored scale reverses it\n");
+        ArcFixture f;
+        FeedAll(f.h, "IN;RO90;PU1100,1000;PD;AA1000,1000,90;PU;");
+        /* RO90: physical = (W - y, x); centre 1000,1000 -> 15000,1000 */
+        CHECK_EQ_STR(f.sink.Joined(), "M15000,1100 D A15000,1000>14900,1000@90 U");
+        f.sink.Clear();
+        FeedAll(f.h, "IN;IP0,0,16000,12000;SC1600,0,0,1200;PU100,100;PD;AA0,100,90;PU;");
+        /* x mirrored (10 PU per unit): user CCW is clockwise on paper */
+        CHECK_EQ_STR(f.sink.Joined(), "M15000,1000 D A16000,1000>16000,2000@-90 U");
+    }
+    {
+        printf("native arcs: anisotropic scale and clipping fall back to chords\n");
+        ArcFixture f;
+        FeedAll(f.h, "IP0,0,16000,12000;SC0,1600,0,2400;PU110,100;PD;AA100,100,90,45;PU;SC;");
+        CHECK(f.sink.Joined().find('A') == std::string::npos);
+        CHECK(f.sink.events.size() == 1 + 1 + 2 + 1);
+        f.sink.Clear();
+        FeedAll(f.h, "IN;PU50,1000;CI100;");  /* crosses x = 0 */
+        CHECK(f.sink.Joined().find('A') == std::string::npos);
+        f.sink.Clear();
+        FeedAll(f.h, "IN;IW0,0,1050,2000;PU1000,1000;CI100;");  /* window cuts the circle */
+        CHECK(f.sink.Joined().find('A') == std::string::npos);
+        f.sink.Clear();
+        FeedAll(f.h, "IN;IW0,0,1200,2000;PU1000,1000;CI100;");  /* touches nothing */
+        CHECK(f.sink.Joined().find("A1000,1000>1100,1000@360") != std::string::npos);
+    }
+    {
+        printf("native arcs: buffered (optimizer) jobs are chords, pass-through forwards\n");
+        ArcSink out;
+        JobOptimizer *opt = new JobOptimizer();
+        opt->Init(&out);
+        HpglInterpreter h;
+        h.Init(opt, kW, kH, "7475A");
+        opt->BeginJob(false);
+        FeedAll(h, "PU1000,1000;CI100;");
+        CHECK(out.Joined().find("A1000,1000>1100,1000@360") != std::string::npos);
+        out.Clear();
+        opt->BeginJob(true);
+        FeedAll(h, "PU2000,2000;CI100;");
+        opt->EndJob();
+        for (int i = 0; i < 100000 && opt->Busy(); i++) opt->Pump();
+        CHECK(out.Joined().find('A') == std::string::npos);
+        CHECK(out.events.size() > 70);
+        delete opt;
+    }
+}
+
 static void TestRectanglesAndWedges() {
     printf("EA / ER / RA / EW\n");
     Fixture f;
@@ -742,6 +836,7 @@ int main(int argc, char **argv) {
     TestCircle();
     TestSmallCircleMinChord();
     TestArcs();
+    TestNativeArcs();
     TestRectanglesAndWedges();
     TestOutputs();
     TestVelocityAndPen();

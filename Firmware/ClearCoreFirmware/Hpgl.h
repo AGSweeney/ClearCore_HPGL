@@ -9,8 +9,10 @@
  *
  * Bytes go in one at a time with Feed(). Geometry comes out through HpglSink as
  * PenUp / PenDown / MoveTo in physical plotter units (40 per mm), already scaled,
- * rotated, window-clipped and clamped to the hard-clip area. Arcs and circles
- * become chords. Output instructions (OI, OS, OA, ...) call Reply().
+ * rotated, window-clipped and clamped to the hard-clip area. Pen-down arcs and
+ * circles go to the sink as one ArcTo when it accepts them (same scale on both
+ * axes, wholly inside the clip area); otherwise they become chords. Output
+ * instructions (OI, OS, OA, ...) call Reply().
  *
  * Shapes that expand into many segments (CI, AA, EW, ...) are emitted from
  * Pump(), a few segments at a time, while Busy() is true. The caller stops
@@ -49,6 +51,13 @@ public:
     virtual void PenDown() = 0;
     /* Physical plotter units, inside [0, width] x [0, height]. */
     virtual void MoveTo(double xPu, double yPu) = 0;
+    /* Pen-down arc from the current point around (cx, cy) to (ex, ey), physical plotter
+     * units. sweepDeg is signed (positive = counter-clockwise); +-360 is a full circle and
+     * then (ex, ey) is the start point. Return false to have it drawn as chords instead. */
+    virtual bool ArcTo(double cxPu, double cyPu, double exPu, double eyPu, double sweepDeg) {
+        (void)cxPu; (void)cyPu; (void)exPu; (void)eyPu; (void)sweepDeg;
+        return false;
+    }
     /* Pen-down speed in mm/s. <= 0 restores the configured default. */
     virtual void SetVelocity(double mmPerSec) = 0;
     virtual void SelectPen(int pen) = 0;
@@ -163,13 +172,16 @@ private:
     void LogicalPenDown();
     void PhysicalMove(Pt p);
     void PhysicalPen(bool down);
+    bool ClipBox(double *xmin, double *ymin, double *xmax, double *ymax) const;
     bool ClipSegment(Pt a, Pt b, double *t0, double *t1) const;
+    bool ArcInsideClip(Pt c, double r, double a0, double sweep) const;
 
     /* Shapes */
     void PushOp(uint8_t type, double x = 0, double y = 0, double a = 0, double b = 0);
     void BeginShape();
     double ChordDegrees(double requested) const;
     bool StepArc(Op &op);
+    bool NativeArc(const Op &op);
 
     /* Output */
     void ReplyF(const char *fmt, ...);

@@ -62,6 +62,8 @@ public:
     void PenUp() override;
     void PenDown() override;
     void MoveTo(double xPu, double yPu) override;
+    /* Passed through when not buffering; a buffered job stores points, so arcs are chords. */
+    bool ArcTo(double cxPu, double cyPu, double exPu, double eyPu, double sweepDeg) override;
     void SetVelocity(double mmPerSec) override;
     void SelectPen(int pen) override;
     void Reply(const char *text) override;

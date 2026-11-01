@@ -17,6 +17,9 @@ enum ActionType : uint8_t {
     ACT_LINE,
     ACT_PEN_UP,
     ACT_PEN_DOWN,
+    ACT_ARC_CW,      /* x, y = end; the next slot is ACT_ARC_CENTER */
+    ACT_ARC_CCW,
+    ACT_ARC_CENTER,  /* x, y = centre of the arc before it */
 };
 
 struct Action {
@@ -27,6 +30,8 @@ struct Action {
 };
 
 static const uint32_t kPenZTimeoutMs = 5000;
+/* Arcs smaller than this (steps) are left to chords. */
+static const double kMinArcRadiusSteps = 4.0;
 
 static Action g_actions[CHPGL_ACTION_QUEUE];
 static uint16_t g_head = 0;
@@ -73,6 +78,8 @@ static int g_pen = 1;
 static PlotterReplyFn g_reply = nullptr;
 static uint32_t g_segments = 0;
 static uint32_t g_dropped = 0;
+static uint32_t g_arcs = 0;
+static uint32_t g_arcFallbacks = 0;
 static uint32_t g_pages = 0;
 
 /* ------------------------------------------------------------------------- */
@@ -140,7 +147,8 @@ static void SyncTailFromMotion() {
     g_prevDirValid = false;
 }
 
-/* Arcs and curves arrive as short chords. The planner's per-axis corner limit (corner_mm_s)
+/* Curves that are not native arcs (DXF tessellation, driver polylines, chorded HP-GL arcs)
+ * arrive as short chords. The planner's per-axis corner limit (corner_mm_s)
  * is applied at every joint but not over time, so many small joints in a row add up to
  * far more than accel_mm_s2: on a 2 mm circle at 100 mm/s the axes are kicked about every
  * 2 ms, about 5000 mm/s^2, and the motors shake. Estimate the local radius from the turn
@@ -198,49 +206,74 @@ static void Pop() {
     g_count--;
 }
 
-static uint16_t LineRunAtHead(uint16_t limit) {
+static bool IsMotion(uint8_t type) {
+    return type == ACT_LINE || type == ACT_ARC_CW || type == ACT_ARC_CCW;
+}
+
+/* Motions (lines and arcs) at the head of the queue, at most limit; *slots = action slots
+ * they take (an arc takes two). */
+static uint16_t MotionRunAtHead(uint16_t limit, uint16_t *slots) {
     uint16_t n = 0;
-    while (n < g_count && n < limit) {
-        if (g_actions[(g_head + n) % CHPGL_ACTION_QUEUE].type != ACT_LINE) {
+    uint16_t i = 0;
+    while (i < g_count && n < limit) {
+        const uint8_t type = g_actions[(g_head + i) % CHPGL_ACTION_QUEUE].type;
+        if (!IsMotion(type)) {
             break;
         }
+        i = (uint16_t)(i + (type == ACT_LINE ? 1 : 2));
         n++;
     }
+    *slots = i;
     return n;
 }
 
-static void QueueHeadLine() {
-    const Action &a = Head();
-    g_xy.ArcVelMax(a.speed);
-    if (g_xy.QueueLinear(a.x, a.y)) {
-        g_segments++;
-    } else {
-        g_dropped++;  /* zero-length after rounding, or rejected by the planner */
-    }
+static void QueueHeadMotion() {
+    const Action a = Head();
     Pop();
+    g_xy.ArcVelMax(a.speed);
+    if (a.type == ACT_LINE) {
+        if (g_xy.QueueLinear(a.x, a.y)) {
+            g_segments++;
+        } else {
+            g_dropped++;  /* zero-length after rounding, or rejected by the planner */
+        }
+        return;
+    }
+    const Action c = Head();  /* ACT_ARC_CENTER, pushed with the arc */
+    Pop();
+    if (g_xy.QueueArcTo(c.x, c.y, a.x, a.y, a.type == ACT_ARC_CW)) {
+        g_segments++;
+        g_arcs++;
+    } else if (g_xy.QueueLinear(a.x, a.y)) {
+        g_segments++;  /* keep the controller where the queue tail says it is */
+        g_arcFallbacks++;
+    } else {
+        g_dropped++;
+    }
 }
 
 static void FeedXy() {
     const uint8_t cap = g_xy.PlannerQueueCapacity();
     if (XyIdle()) {
-        const uint16_t run = LineRunAtHead((uint16_t)(cap - 1));
+        uint16_t slots = 0;
+        const uint16_t run = MotionRunAtHead((uint16_t)(cap - 1), &slots);
         if (run == 0) {
             return;
         }
-        const bool runEnds = run < g_count;  /* a pen change follows */
+        const bool runEnds = slots < g_count;  /* a pen change follows */
         if (run < cap - 1 && !runEnds && (Milliseconds() - g_lastPushMs) < CHPGL_START_WAIT_MS) {
             return;  /* give the host a moment so the planner sees more than one segment */
         }
         g_xy.SetDeferMotionQueueStart(true);
         for (uint16_t i = 0; i < run; i++) {
-            QueueHeadLine();
+            QueueHeadMotion();
         }
         g_xy.SetDeferMotionQueueStart(false);
         g_xy.StartDeferredMotionIfPending();
         return;
     }
-    while (g_count > 0 && Head().type == ACT_LINE && g_xy.MotionQueueCount() + 1 < cap) {
-        QueueHeadLine();
+    while (g_count > 0 && IsMotion(Head().type) && g_xy.MotionQueueCount() + 1 < cap) {
+        QueueHeadMotion();
     }
 }
 
@@ -314,6 +347,59 @@ public:
         Push(ACT_LINE, sx, sy, speed);
         g_tailX = sx;
         g_tailY = sy;
+    }
+    /* One QueueArcTo instead of chords. Declined (chords instead) when the axes have different
+     * step scales (the circle would be an ellipse in steps), the arc is tiny, or rounding to
+     * steps would change it: the controller takes the sweep from the rounded end points. */
+    bool ArcTo(double cxPu, double cyPu, double exPu, double eyPu, double sweepDeg) override {
+        const double kx = g_stepsPerPu[0];
+        const double ky = g_stepsPerPu[1];
+        if (fabs(fabs(kx) - fabs(ky)) > 1e-9 * fabs(kx) || g_count + 2 > CHPGL_ACTION_QUEUE) {
+            return false;
+        }
+        const int32_t cx = (int32_t)lround(cxPu * kx);
+        const int32_t cy = (int32_t)lround(cyPu * ky);
+        const int32_t ex = (int32_t)lround(exPu * kx);
+        const int32_t ey = (int32_t)lround(eyPu * ky);
+        const double sx = (double)g_tailX - cx;
+        const double sy = (double)g_tailY - cy;
+        const double r = sqrt(sx * sx + sy * sy);
+        const double ux = (double)ex - cx;
+        const double uy = (double)ey - cy;
+        if (r < kMinArcRadiusSteps || fabs(sqrt(ux * ux + uy * uy) - r) > 2.0) {
+            return false;
+        }
+        const bool ccw = (sweepDeg > 0) != ((kx < 0) != (ky < 0));  /* one axis reversed mirrors */
+        double span = atan2(uy, ux) - atan2(sy, sx);
+        if (!ccw) {
+            span = -span;
+        }
+        span = fmod(span, 2.0 * M_PI);
+        if (span <= 0) {
+            span += 2.0 * M_PI;  /* same end point: a full circle, as in the controller */
+        }
+        const double want = fabs(sweepDeg) * M_PI / 180.0;
+        if (fabs(span - want) > fmax(0.01, 3.0 / r)) {
+            return false;
+        }
+        /* centripetal acceleration v^2 / r within the path acceleration */
+        uint32_t speed = g_queuedPenDown ? g_drawSps : g_travelSps;
+        const double vMax = sqrt(g_accelSteps * r);
+        if (vMax < (double)speed) {
+            speed = (vMax < 1.0) ? 1u : (uint32_t)vMax;
+            g_curveCapped++;
+        }
+        Push(ccw ? ACT_ARC_CCW : ACT_ARC_CW, ex, ey, speed);
+        Push(ACT_ARC_CENTER, cx, cy, 0);
+        g_tailX = ex;
+        g_tailY = ey;
+        /* exit tangent, for the curvature estimate of the segment after */
+        const double ul = sqrt(ux * ux + uy * uy);
+        g_prevDirValid = true;
+        g_prevDirX = (ccw ? -uy : uy) / ul;
+        g_prevDirY = (ccw ? ux : -ux) / ul;
+        g_prevLen = 0.0;
+        return true;
     }
     void SetVelocity(double mmPerSec) override {
         /* job_speed 0: the board's pen-down speed, whatever the job asks for (CAD drivers send
@@ -602,7 +688,7 @@ void PlotterPoll() {
         return;
     }
     const Action &a = Head();
-    if (a.type == ACT_LINE) {
+    if (IsMotion(a.type)) {
         FeedXy();
         return;
     }
@@ -679,10 +765,11 @@ void PlotterStatus(char *buf, size_t len) {
     const double y = (double)g_xy.CurrentY() / g_stepsPerPu[1] / HPGL_PU_PER_MM;
     snprintf(buf, len,
              "state=%s enabled=%d x_mm=%.3f y_mm=%.3f pen=%s sel_pen=%d queue=%u planner=%u "
-             "segments=%lu curve_capped=%lu dropped=%lu pages=%lu estop=%s fault=%s",
+             "segments=%lu arcs=%lu arc_fallbacks=%lu curve_capped=%lu dropped=%lu pages=%lu "
+             "estop=%s fault=%s",
              state, g_enabled ? 1 : 0, x, y, g_physPenDown ? "down" : "up", g_pen,
              (unsigned)g_count, (unsigned)g_xy.MotionQueueCount(), (unsigned long)g_segments,
-             (unsigned long)g_curveCapped,
+             (unsigned long)g_arcs, (unsigned long)g_arcFallbacks, (unsigned long)g_curveCapped,
              (unsigned long)g_dropped, (unsigned long)g_pages, EstopTripped() ? "open" : "ok",
              g_fault ? g_fault : "none");
 }

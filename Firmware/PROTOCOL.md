@@ -50,7 +50,7 @@ Jobs from the sources set in `optimize` (default USB and COM: CAD drivers such a
 - Plotter (0,0) is where the pen was at power-up, or wherever `origin` was run. There is no homing yet.
 - Pen-up moves outside the hard clip are clamped to it. Pen-down lines are clipped to `IW` ∩ hard clip; the pen lifts where a line leaves the window and drops where it comes back.
 - `RO 90/180/270` rotates the coordinate frame and swaps the logical width and height (`OH` reports the rotated size).
-- Arcs and circles are drawn as chords: 5° by default, set by the chord parameter of `AA`/`AR`/`CI`/`EW`/`WG`, or as a deviation after `CT1`. The minimum is 0.5°.
+- Pen-down arcs and circles (`AA`/`AR`/`CI`/`EW`/`WG`) run as true arcs in the motion controller (one move, speed capped so the centripetal acceleration stays within `accel_mm_s2`; `arcs=` in `status`). They fall back to chords when the job is being reordered (`optimize`), the scaling differs between X and Y, the arc crosses the window or the hard-clip edge, X and Y have different steps per mm, or the arc is under a few steps in radius. Chords are 5° by default, set by the chord parameter or as a deviation after `CT1`; the minimum is 0.5°.
 
 ## HP-GL instructions
 

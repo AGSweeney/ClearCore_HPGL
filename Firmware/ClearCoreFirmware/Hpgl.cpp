@@ -370,16 +370,25 @@ void HpglInterpreter::PhysicalMove(Pt p) {
     }
 }
 
-/* Liang-Barsky against the window (when on) intersected with the hard clip. */
-bool HpglInterpreter::ClipSegment(Pt a, Pt b, double *t0, double *t1) const {
-    double xmin = 0, ymin = 0, xmax = LogicalWidth(), ymax = LogicalHeight();
+/* The window (when on) intersected with the hard clip; false when they do not overlap. */
+bool HpglInterpreter::ClipBox(double *xmin, double *ymin, double *xmax, double *ymax) const {
+    *xmin = 0;
+    *ymin = 0;
+    *xmax = LogicalWidth();
+    *ymax = LogicalHeight();
     if (m_windowOn) {
-        xmin = fmax(xmin, m_winLo.x);
-        ymin = fmax(ymin, m_winLo.y);
-        xmax = fmin(xmax, m_winHi.x);
-        ymax = fmin(ymax, m_winHi.y);
+        *xmin = fmax(*xmin, m_winLo.x);
+        *ymin = fmax(*ymin, m_winLo.y);
+        *xmax = fmin(*xmax, m_winHi.x);
+        *ymax = fmin(*ymax, m_winHi.y);
     }
-    if (xmin > xmax + kEps || ymin > ymax + kEps) {
+    return !(*xmin > *xmax + kEps || *ymin > *ymax + kEps);
+}
+
+/* Liang-Barsky against ClipBox(). */
+bool HpglInterpreter::ClipSegment(Pt a, Pt b, double *t0, double *t1) const {
+    double xmin, ymin, xmax, ymax;
+    if (!ClipBox(&xmin, &ymin, &xmax, &ymax)) {
         return false;
     }
     const double dx = b.x - a.x;
@@ -405,6 +414,39 @@ bool HpglInterpreter::ClipSegment(Pt a, Pt b, double *t0, double *t1) const {
     }
     *t0 = lo;
     *t1 = hi;
+    return true;
+}
+
+/* Whole arc inside ClipBox(): its ends and every axis extreme it passes. Logical PU, angles
+ * in radians, sweep signed (positive = counter-clockwise). */
+bool HpglInterpreter::ArcInsideClip(Pt c, double r, double a0, double sweep) const {
+    double xmin, ymin, xmax, ymax;
+    if (!ClipBox(&xmin, &ymin, &xmax, &ymax)) {
+        return false;
+    }
+    const double kTwoPi = 2.0 * M_PI;
+    for (int k = -2; k < 4; k++) {
+        double a;
+        if (k == -2) {
+            a = a0;
+        } else if (k == -1) {
+            a = a0 + sweep;
+        } else {
+            a = k * (M_PI / 2.0);
+            /* how far along the sweep this extreme lies */
+            double d = (sweep >= 0) ? (a - a0) : (a0 - a);
+            d = fmod(d, kTwoPi);
+            if (d < 0) d += kTwoPi;
+            if (d > fabs(sweep)) {
+                continue;
+            }
+        }
+        const double x = c.x + r * cos(a);
+        const double y = c.y + r * sin(a);
+        if (x < xmin - kEps || x > xmax + kEps || y < ymin - kEps || y > ymax + kEps) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -511,7 +553,59 @@ double HpglInterpreter::ChordDegrees(double requested) const {
     return deg;
 }
 
-/* One chord per call. Returns true when the arc is finished. */
+/* A pen-down arc as one sink ArcTo, when a circle in user units is a circle on the paper
+ * (same scale magnitude on both axes; RO only rotates) and the whole arc is inside the
+ * window and hard clip. Needs m_arcR / m_arcStart. False: draw it as chords. */
+bool HpglInterpreter::NativeArc(const Op &op) {
+    if (!m_sink || !m_penDown || fabs(op.a) > 360.0 + kEps) {
+        return false;
+    }
+    bool mirror = false;
+    if (m_scaleOn) {
+        const double ax = fabs(m_kx);
+        const double ay = fabs(m_ky);
+        if (ax < 1e-12 || fabs(ax - ay) > 1e-9 * ax) {
+            return false;  /* anisotropic scaling: the arc is an ellipse */
+        }
+        mirror = (m_kx < 0) != (m_ky < 0);
+    }
+    const bool full = fabs(op.a) >= 360.0 - kEps;
+    const Pt s = m_pos;
+    const Pt c = UserToPu(op.x, op.y);
+    Pt e = s;
+    if (!full) {
+        const double ae = m_arcStart + op.a * M_PI / 180.0;
+        e = UserToPu(op.x + m_arcR * cos(ae), op.y + m_arcR * sin(ae));
+    }
+    if (fabs(c.x) > 1e9 || fabs(c.y) > 1e9 || fabs(e.x) > 1e9 || fabs(e.y) > 1e9) {
+        return false;
+    }
+    const double r = sqrt((s.x - c.x) * (s.x - c.x) + (s.y - c.y) * (s.y - c.y));
+    if (r < kEps) {
+        return false;
+    }
+    /* Sweep on the paper: a mirrored scale reverses the direction. */
+    const double sweepDeg = (full ? (op.a > 0 ? 360.0 : -360.0) : op.a) * (mirror ? -1.0 : 1.0);
+    if (!ArcInsideClip(c, r, atan2(s.y - c.y, s.x - c.x), sweepDeg * M_PI / 180.0)) {
+        return false;
+    }
+    if (!SamePoint(m_physPos.x, m_physPos.y, s.x, s.y)) {
+        PhysicalPen(false);
+        PhysicalMove(s);
+    }
+    PhysicalPen(true);
+    const Pt cq = LogicalToPhysical(c);
+    const Pt eq = LogicalToPhysical(e);
+    if (!m_sink->ArcTo(cq.x, cq.y, eq.x, eq.y, sweepDeg)) {
+        return false;
+    }
+    m_pos = e;
+    m_physPos = e;
+    return true;
+}
+
+/* One chord per call (or the whole arc through NativeArc). Returns true when the arc is
+ * finished. */
 bool HpglInterpreter::StepArc(Op &op) {
     if (m_arcSteps == 0) {
         const Pt start = CurrentUser();
@@ -522,6 +616,9 @@ bool HpglInterpreter::StepArc(Op &op) {
             return true;
         }
         m_arcStart = atan2(dy, dx);
+        if (NativeArc(op)) {
+            return true;
+        }
         double chord;
         if (m_chordMode == 1 && op.b > 0) {
             /* CT1: chord parameter is the maximum deviation in user units. */

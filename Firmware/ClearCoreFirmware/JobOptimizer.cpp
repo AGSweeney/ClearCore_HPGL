@@ -169,6 +169,13 @@ void JobOptimizer::MoveTo(double xPu, double yPu) {
     }
 }
 
+bool JobOptimizer::ArcTo(double cxPu, double cyPu, double exPu, double eyPu, double sweepDeg) {
+    if (m_mode != M_PASS) {
+        return false;
+    }
+    return m_out->ArcTo(cxPu, cyPu, exPu, eyPu, sweepDeg);
+}
+
 void JobOptimizer::SetVelocity(double mmPerSec) {
     if (m_mode == M_PASS) {
         m_out->SetVelocity(mmPerSec);

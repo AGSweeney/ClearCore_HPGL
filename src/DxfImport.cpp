@@ -251,8 +251,8 @@ void tessellateCircleMm(double cx, double cy, double cz, double r, QVector<QVect
 
 /* ---- Arc recovery for HP-GL output ----------------------------------------------------------
  * ARC, CIRCLE and bulge segments are tessellated above in equal steps of at most pi/16. When a job
- * is written, a run of points that lies on one circle and turns one way in such steps goes out as
- * one AA (a true arc on the plotter) instead of a chain of PD chords. Working on the points keeps
+ * is written, a run of points that lies on one circle and turns one way in equal such steps goes out
+ * as one AA (a true arc on the plotter) instead of a chain of PD chords. Working on the points keeps
  * every later edit valid: joining, reversing, the entry vertex of a closed contour, placement and
  * the centre-origin shift all move or reorder points, and the circle is still found. */
 constexpr double kArcStepMax = kPi / 16.0 + 1.0e-4;  // largest tessellation step, plus float slack
@@ -302,6 +302,9 @@ bool arcRun(const QVector<QVector3D> &s, int i, int j, FitCircle *c, double *swe
     const double tol = 0.002 + c->r * 1.0e-5;  // points are floats; 0.002 mm is 1/12 plotter unit
     double total = 0.0;
     int dir = 0;  // +1 counter-clockwise, -1 clockwise, 0 not known yet
+    double first = 0.0;  // first step: the tessellation's steps are all equal
+    // steps may differ by 0.2 %, plus about 1e-4 mm of float noise in the points as an angle
+    const double stepTol = 0.002;
     for (int k = i; k <= j; ++k) {
         const double rk = std::hypot(double(s[k].x()) - c->cx, double(s[k].y()) - c->cy);
         if (std::abs(rk - c->r) > tol) {
@@ -314,6 +317,14 @@ bool arcRun(const QVector<QVector3D> &s, int i, int j, FitCircle *c, double *swe
             }
             const int dk = d > 0 ? 1 : -1;
             if (std::abs(d) > kArcStepMax || (dir != 0 && dk != dir)) {
+                return false;
+            }
+            // Equal steps: one tessellated arc. Points that merely lie on some circle (a corner
+            // arc's end, a straight side and the next corner's start can be exactly symmetric)
+            // are not an arc.
+            if (dir == 0) {
+                first = d;
+            } else if (std::abs(d - first) > stepTol * std::abs(first) + 1.0e-4 / c->r) {
                 return false;
             }
             dir = dk;

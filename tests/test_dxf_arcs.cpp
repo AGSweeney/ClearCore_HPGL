@@ -37,6 +37,7 @@ constexpr double kPi = 3.14159265358979323846;
 
 struct Pt {
     double x, y;
+    double tol = 0.03;  // allowed distance from the strips (mm): chord sag on arcs
 };
 
 /* Records pen-down geometry in mm; arcs are sampled every degree. */
@@ -51,21 +52,23 @@ public:
     void PenUp() override { down = false; }
     void PenDown() override {
         down = true;
-        paths.push_back({{x / 40.0, y / 40.0}});
+        paths.push_back({{x / 40.0, y / 40.0, 0.03}});
     }
     void MoveTo(double px, double py) override {
         x = px;
         y = py;
-        if (down) paths.back().push_back({x / 40.0, y / 40.0});
+        if (down) paths.back().push_back({x / 40.0, y / 40.0, 0.03});
     }
     bool ArcTo(double cx, double cy, double ex, double ey, double sweepDeg) override {
         arcs++;
         const double r = std::hypot(x - cx, y - cy);
         const double a0 = std::atan2(y - cy, x - cx);
         const int n = int(std::ceil(std::fabs(sweepDeg)));
+        /* the strips are chords of at most 11.25 degrees: inside the arc by up to r (1 - cos 5.625) */
+        const double sag = r / 40.0 * (1.0 - std::cos(kPi / 32.0)) + 0.03;
         for (int k = 1; k <= n; k++) {
             const double a = a0 + sweepDeg * kPi / 180.0 * double(k) / double(n);
-            if (down) paths.back().push_back({(cx + r * std::cos(a)) / 40.0, (cy + r * std::sin(a)) / 40.0});
+            if (down) paths.back().push_back({(cx + r * std::cos(a)) / 40.0, (cy + r * std::sin(a)) / 40.0, sag});
         }
         x = ex;
         y = ey;
@@ -84,9 +87,9 @@ public:
     uint32_t Room() override { return 100000; }
 };
 
-void Render(const QString &hpgl, RenderSink *sink) {
+void Render(const QString &hpgl, RenderSink *sink, double bedWPu = 16000, double bedHPu = 16000) {
     HpglInterpreter h;
-    h.Init(sink, 16000, 12000, "7475A");
+    h.Init(sink, bedWPu, bedHPu, "7475A");
     const QByteArray b = hpgl.toLatin1();
     for (char c : b) {
         h.Feed(uint8_t(c));
@@ -138,12 +141,83 @@ const char *kDxf =
     "0\nLWPOLYLINE\n8\n0\n90\n6\n70\n1\n"
     "10\n265\n20\n50\n10\n257.5\n20\n62.990381\n10\n242.5\n20\n62.990381\n"
     "10\n235\n20\n50\n10\n242.5\n20\n37.009619\n10\n257.5\n20\n37.009619\n"
+    // Stencil outline from a real job (NewStencil_0.036_ID.dxf, in mm, shortened to fit): a rounded
+    // rectangle whose corners are two bulges of about 45 degrees each, with straight sides. A
+    // corner's last point, a straight side and the next corner's first point lie exactly on one
+    // large circle (they are symmetric) in steps under 11.25 degrees, but they are not an arc: the
+    // side was sent as a 9-degree AA bowing out 1.6 mm.
+    "0\nLWPOLYLINE\n8\n0\n90\n12\n70\n1\n"
+    "10\n184.4243\n20\n238.4158\n42\n0.000000\n"
+    "10\n14.1427\n20\n238.4158\n42\n0.198658\n"
+    "10\n9.6525\n20\n236.5682\n42\n0.200520\n"
+    "10\n7.7927\n20\n232.1077\n42\n0.000000\n"
+    "10\n7.7927\n20\n149.4737\n42\n0.200520\n"
+    "10\n9.6525\n20\n145.0134\n42\n0.198658\n"
+    "10\n14.1427\n20\n143.1658\n42\n0.000000\n"
+    "10\n184.4243\n20\n143.1658\n42\n0.198658\n"
+    "10\n188.9143\n20\n145.0134\n42\n0.200520\n"
+    "10\n190.7743\n20\n149.4737\n42\n0.000000\n"
+    "10\n190.7743\n20\n232.1077\n42\n0.200520\n"
+    "10\n188.9143\n20\n236.5682\n42\n0.198658\n"
     "0\nENDSEC\n0\nEOF\n";
 
 }  // namespace
 
+/* test_dxf_arcs <file.dxf> [out.plt]: the same pipeline on a real drawing, placed at the origin as
+ * the app's "place at origin" does, on a 600 x 300 mm bed. Every drawn point must be within chord
+ * sag of the strips, every AA must be drawn as an arc (not clipped back to chords) and every strip
+ * must be drawn in one pen-down run (nothing lifted at the bed edge). Writes the HP-GL when asked. */
+int CheckFile(const QString &dxf, const QString &plt) {
+    DxfImportOutput in;
+    if (!ImportDxfFile(dxf, &in)) {
+        std::printf("import failed: %s\n", qPrintable(in.errorMessage));
+        return 2;
+    }
+    QVector<QVector<QVector3D>> strips = in.polylinesMm;
+    OrderStripsForCutting(&strips, &in.rapidSegmentsMm);
+    float minX = 1e30f, minY = 1e30f;
+    for (const auto &s : strips) {
+        for (const QVector3D &p : s) {
+            minX = std::min(minX, p.x());
+            minY = std::min(minY, p.y());
+        }
+    }
+    for (auto &s : strips) {
+        for (QVector3D &p : s) {
+            p -= QVector3D(minX, minY, 0.f);
+        }
+    }
+    const QString hpgl = BuildHpglFromPolylinesMm(strips, nullptr, true);
+    if (!plt.isEmpty()) {
+        QFile f(plt);
+        if (f.open(QIODevice::WriteOnly)) f.write(hpgl.toLatin1() + "\nPU;SP0;\n");
+    }
+    RenderSink r;
+    Render(hpgl, &r, 600 * 40, 300 * 40);
+    const int aaText = int(hpgl.count(QLatin1String("AA")));
+    std::printf("AA sent %d, drawn as arcs %d; strips %d, pen-down runs %d\n", aaText, r.arcs,
+                int(strips.size()), int(r.paths.size()));
+    double worst = 0.0;
+    Pt at{0, 0};
+    for (const auto &path : r.paths) {
+        for (const Pt &p : path) {
+            const double d = DistToStrips(p, strips) - p.tol;
+            if (d > worst) {
+                worst = d;
+                at = p;
+            }
+        }
+    }
+    std::printf("%d strips, %d AA; worst excess over chord sag %.4f mm at (%.3f, %.3f)\n", int(strips.size()),
+                r.arcs, worst, at.x, at.y);
+    return (worst > 0.0 || r.arcs != aaText || r.paths.size() != size_t(strips.size())) ? 1 : 0;
+}
+
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
+    if (argc > 1) {
+        return CheckFile(QString::fromLocal8Bit(argv[1]), argc > 2 ? QString::fromLocal8Bit(argv[2]) : QString());
+    }
     QTemporaryDir dir;
     const QString path = dir.filePath("arcs.dxf");
     {
@@ -157,7 +231,7 @@ int main(int argc, char **argv) {
     DxfImportOutput in;
     CHECK(ImportDxfFile(path, &in));
     QVector<QVector<QVector3D>> strips = in.polylinesMm;
-    CHECK(strips.size() == 5);
+    CHECK(strips.size() == 6);
     OrderStripsForCutting(&strips, &in.rapidSegmentsMm);
 
     QVector<int> offsets;
@@ -166,13 +240,15 @@ int main(int argc, char **argv) {
     std::printf("HP-GL with arcs:\n%s\n\n", qPrintable(withArcs));
 
     printf("AA output\n");
-    /* circle, arc and the slot's two ends; the slot is entered at its nearest vertex, the middle of
-     * one end, which splits that end in two */
+    /* circle, arc and the slot's two ends (the slot is entered at its nearest vertex, the middle of
+     * one end, which splits that end in two): 5; the outline's eight corner bulges, less the one
+     * the entry vertex splits into 2 + 2 steps (too short to call arcs: PD chords): 7. Its
+     * straight sides stay PD. */
     const int aa = int(withArcs.count(QLatin1String("AA")));
-    CHECK(aa == 5);
+    CHECK(aa == 12);
     CHECK(withArcs.contains(QLatin1String(",360.000;")) || withArcs.contains(QLatin1String(",-360.000;")));
     CHECK(!chords.contains(QLatin1String("AA")));
-    CHECK(withArcs.size() < chords.size() / 3);
+    CHECK(withArcs.size() < chords.size() / 2);
     for (int s = 0; s < strips.size(); s++) {
         CHECK(offsets[s] >= 0 && withArcs.mid(offsets[s], 2) == QLatin1String("PD"));
     }
@@ -182,14 +258,18 @@ int main(int argc, char **argv) {
     Render(withArcs, &r);
     CHECK(r.arcs == aa);
     double worst = 0.0;
+    double excess = 0.0;
     for (const auto &path2 : r.paths) {
         for (const Pt &p : path2) {
-            worst = std::max(worst, DistToStrips(p, strips));
+            const double d = DistToStrips(p, strips);
+            worst = std::max(worst, d);
+            excess = std::max(excess, d - p.tol);
         }
     }
     /* chords of at most 11.25 degrees sit inside the true arc by r (1 - cos 5.6) <= 0.1 mm at r 20 */
     std::printf("  max distance from the strips: %.4f mm\n", worst);
     CHECK(worst < 0.12);
+    CHECK(excess <= 0.0);
     double endWorst = 0.0;
     for (const Pt &e : r.arcEnds) {
         endWorst = std::max(endWorst, DistToVertex(e, strips));

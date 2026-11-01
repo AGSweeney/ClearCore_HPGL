@@ -312,7 +312,8 @@ static void CloseTcpClient() {
 static void PollTcpHpgl() {
     if (!g_tcpConnected) {
         EthernetTcpClient next = g_hpglServer.Accept();
-        if (!next.Connected()) {
+        /* A job can be complete (sent and closed) before it is accepted: keep its data. */
+        if (!next.Connected() && next.BytesAvailable() <= 0) {
             return;
         }
         g_tcpClient = next;

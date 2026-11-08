@@ -132,6 +132,7 @@ Still to build:
 
 ## Documentation
 
+- [ClearHPGL User's Manual (PDF)](docs/manual/clearhpgl-manual.pdf): hardware and wiring, firmware install, first setup, the desktop app, plotting from AutoCAD, how jobs are processed, troubleshooting, and full references for console commands, settings and HP-GL. LaTeX source in [docs/manual](docs/manual); build with `tectonic clearhpgl-manual.tex`.
 - [Firmware/PROTOCOL.md](Firmware/PROTOCOL.md): connections and ports, supported HP-GL and HP-GL/2, device control, console commands, every setting with its default, and faults.
 - `python Firmware/host/clearhpgl_cli.py --help`: the command-line client (discover, send, query, console).
 

@@ -1,0 +1,230 @@
+\chapter{First Setup}\label{ch:setup}
+
+Do the procedures in this chapter in the given sequence when you start a new
+machine. You can do them in the console of the board, or in
+\menu{Plotter settings} in the desktop app (section~\ref{sec:app-settings}).
+
+\section{Open the Console}\label{sec:console}
+
+The console is a text interface for setup and for diagnosis. It is available
+on two links:
+
+\begin{description}[style=nextline,leftmargin=1.2em,font=\sffamily\bfseries\color{navy}]
+  \item[USB] Open the USB COM port in a serial terminal. Type \cmd{menu} on a
+        line by itself and press Enter. Type \cmd{exit} to go back to HP-GL
+        mode. While the console is open, the USB port does not receive HP-GL.
+  \item[TCP port 9300] Connect a terminal (for example PuTTY in ``raw'' mode,
+        or \code{ncat}) to port 9300 of the board. The console accepts one
+        client at a time. The desktop app uses this port when it is connected
+        over Ethernet.
+\end{description}
+
+Each command ends with a line that starts with \code{ok} or \code{error:}.
+Appendix~\ref{app:console} lists all commands. These are the commands that
+you use most:
+
+\begin{lstlisting}[language=console]
+status                 # state, position, pen, counters, and links
+config                 # all settings and their values
+set <key> <value>      # change a setting and save it
+enable / disable       # supply or remove motor power
+goto <x_mm> <y_mm>     # pen-up move to a position
+pen up / pen down      # test the pen lift
+origin                 # the present position becomes plotter 0,0
+clear                  # clear a latched fault
+\end{lstlisting}
+
+\subsection{When a Setting Takes Effect}
+
+Each setting has a rule for when you can change it. The \cmd{config} command
+shows the rule at the end of the line. The desktop app shows it as a label
+next to the field.
+
+\begin{table}[htbp]
+\centering
+\caption{When a setting can change}\label{tab:when}
+\begin{tabularx}{\linewidth}{@{}P{0.17\linewidth}P{0.2\linewidth}L@{}}
+\toprule
+\textbf{Mark in \cmd{config}} & \textbf{Label in the app} & \textbf{Rule} \\
+\midrule
+(none) & (none) & Live. The change takes effect immediately, also during a job. \\
+\code{[idle]} & between jobs & The board refuses the change while a job plots. The motors can stay enabled. \\
+\code{[disabled]} & motors disabled & The board refuses the change while the motors are enabled. Use \cmd{disable} first. The app does this for you. \\
+\code{[restart]} & after restart & The board saves the change. It takes effect after \cmd{restart}. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Set the Mechanics}
+
+The board must know how far each axis moves for one revolution of its
+motor.
+
+\begin{itemize}
+  \item \key{steps_rev_x}, \key{steps_rev_y}: the steps per revolution. Use
+        the input resolution that you set in ClearPath MSP. Default 800.
+  \item \key{mm_rev_x}, \key{mm_rev_y}: the travel of the axis for one
+        revolution of the motor, in mm. Default 5.0.
+\end{itemize}
+
+For a belt drive, the travel per revolution is the number of pulley teeth
+multiplied by the belt pitch. For example, a 20-tooth pulley with a GT2 belt
+(2~mm pitch) gives \SI{40}{mm} per revolution. For a lead screw, the travel
+per revolution is the lead of the screw.
+
+\begin{procedure}{Set the steps and the travel per revolution}
+\begin{enumerate}
+  \item Type \cmd{disable}.
+  \item Type \cmd{set steps_rev_x 800}. Use the value from ClearPath MSP.
+  \item Type \cmd{set mm_rev_x 40}. Use the travel of your X axis.
+  \item Do steps 2 and 3 again for Y, with \key{steps_rev_y} and \key{mm_rev_y}.
+  \item Type \cmd{config}, and make sure that the four values are correct.
+\end{enumerate}
+\end{procedure}
+
+\begin{note}
+\notelabel Use the same steps per millimeter on X and Y. If the two axes are
+different, the speeds use the X scale, and arcs are drawn as short straight
+lines.
+\end{note}
+
+\section{Set the Plot Area and the Origin}
+
+The \term{plot area} is \key{width_mm} by \key{height_mm} (default
+400 by 300). It is the \term{hard clip}: the board does not draw outside it.
+Plotter 0,0 is the lower-left corner of the plot area. The position of the
+pen at power-up is 0,0, until you set a different origin.
+
+\begin{warning}
+The board does not know where the end stops of your machine are. Set the plot
+area to the travel that is really available from the origin. If the area is
+too large, the carriage can hit the end of its travel.
+\end{warning}
+
+\begin{procedure}{Set the plot area and the origin}
+\begin{enumerate}
+  \item Measure the travel of each axis from the corner that you want as the
+        origin.
+  \item Type \cmd{set width_mm 600}. Use your X travel.
+  \item Type \cmd{set height_mm 300}. Use your Y travel.
+  \item Move the pen to the lower-left corner of the plot area. Use
+        \cmd{goto} or the \menu{Jog} tab of the app.
+  \item Type \cmd{origin}. The present position becomes plotter 0,0.
+\end{enumerate}
+\end{procedure}
+
+\begin{note}
+\notelabel The board does not keep the origin when it restarts. After power-up,
+the origin is where the pen is. Move the pen to the corner before you supply
+power, or set the origin again.
+\end{note}
+
+\section{Make Sure That the Axes Move Correctly}
+
+\begin{warning}
+Keep your hands out of the work area. The axes move when you send the next
+commands.
+\end{warning}
+
+\begin{procedure}{Do the first moves}
+\begin{enumerate}
+  \item Type \cmd{set draw_mm_s 20} and \cmd{set travel_mm_s 20} to get a low speed.
+  \item Type \cmd{enable}. Make sure that the reply is \code{ok}.
+  \item Type \cmd{goto 50 0}. The pen must move \SI{50}{mm} in the positive
+        X direction (to the right on a standard plotter).
+  \item Measure the distance. If it is not \SI{50}{mm}, examine
+        \key{steps_rev_x} and \key{mm_rev_x}.
+  \item If the axis moved in the wrong direction, type \cmd{goto 0 0},
+        \cmd{disable}, then \cmd{set dir_x -1}.
+  \item Do steps 3 to 5 again for Y with \cmd{goto 0 50} and \key{dir_y}.
+  \item Type \cmd{goto 0 0} to go back to the origin.
+\end{enumerate}
+\end{procedure}
+
+\section{Set the Pen Lift}
+
+\begin{procedure}{Set and test the pen lift}
+\begin{enumerate}
+  \item Type \cmd{disable}.
+  \item Type \cmd{set pen_mode 0} for a digital output, or \cmd{set pen_mode 1}
+        for a servo on \conn{M2}.
+  \item For a digital output, set \key{pen_io} (0 to 5) and \key{pen_active_high}.
+  \item For a servo on \conn{M2}, set \key{z_up_steps} and \key{z_down_steps}.
+  \item Type \cmd{enable}.
+  \item Type \cmd{pen down}. Make sure that the pen goes down.
+  \item Type \cmd{pen up}. Make sure that the pen goes up.
+  \item If the pen moves before it is fully down or up, increase
+        \key{pen_down_ms} or \key{pen_up_ms}.
+\end{enumerate}
+\end{procedure}
+
+\section{Set the Speeds}
+
+Table~\ref{tab:speeds} shows the motion settings. All of them are live, so
+you can change them during a test plot and see the result.
+
+\begin{table}[htbp]
+\centering
+\caption{Motion settings}\label{tab:speeds}
+\begin{tabularx}{\linewidth}{@{}P{0.21\linewidth}P{0.15\linewidth}L@{}}
+\toprule
+\textbf{Setting} & \textbf{Default} & \textbf{Function} \\
+\midrule
+\key{draw_mm_s} & 100 mm/s & Speed with the pen down. \\
+\key{travel_mm_s} & 200 mm/s & Speed with the pen up. \\
+\key{max_mm_s} & 250 mm/s & Highest pen-down speed that a job can ask for with \cmd{VS}. \\
+\key{job_speed} & 1 & 1: the speed in the job (\cmd{VS}) sets the pen-down speed. 0: always use \key{draw_mm_s}. \\
+\key{accel_mm_s2} & 2000 mm/s\textsuperscript{2} & Acceleration along the path. It also limits the speed on curves. \\
+\key{corner_mm_s} & 20 mm/s & Largest change of speed of one axis at a corner. A larger value gives faster corners and more shock to the machine. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Start with low values. Increase them until the machine is fast and the lines
+are still clean. A heavy carriage or a long belt needs a lower acceleration.
+
+\section{Set the Network}
+
+The board uses DHCP by default. If it gets no address, it uses
+192.168.0.110. For a fixed address, do this procedure.
+
+\begin{procedure}{Set a static IP address}
+\begin{enumerate}
+  \item Type \cmd{set net_mode 1}.
+  \item Type \cmd{set ip 10.168.41.5}. Use your address.
+  \item Type \cmd{set netmask 255.255.255.0}.
+  \item Type \cmd{set gateway 10.168.41.1}. If no other network must reach the
+        board, you can keep 0.0.0.0.
+  \item Type \cmd{restart}. The board restarts with the new address.
+  \item From the computer, type \cmd{ping 10.168.41.5} to make sure that the
+        board replies.
+\end{enumerate}
+\end{procedure}
+
+To go back to DHCP, type \cmd{set net_mode 0} and \cmd{restart}.
+
+\section{Do a Test Plot}
+
+Send a small square to the board. On Windows, save this text in a file with
+the name \file{square.plt}:
+
+\begin{lstlisting}[language=hpgl]
+IN;SP1;PU400,400;PD2400,400,2400,2400,400,2400,400,400;PU0,0;
+\end{lstlisting}
+
+This draws a \SI{50}{mm} square that starts \SI{10}{mm} from the origin.
+Send it to the USB port (for example COM3) with this command in
+\file{cmd.exe}:
+
+\begin{lstlisting}[language=console]
+copy /b square.plt COM3
+\end{lstlisting}
+
+The motors enable automatically, the square plots, and the pen goes back to
+0,0. Measure the square. Each side must be \SI{50}{mm}.
+
+\begin{note}
+\notelabel The board keeps a job from the USB port until the port is quiet
+for 2~s, and then plots it in a better order (section~\ref{sec:optimizer}).
+Thus the plot starts approximately 2~s after the file is sent.
+\end{note}

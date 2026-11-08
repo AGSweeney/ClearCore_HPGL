@@ -1,0 +1,134 @@
+\chapter{Introduction}\label{ch:intro}
+
+\section{What ClearHPGL Is}
+
+HP-GL is the language of the HP pen plotters. Many programs can still send a
+drawing as HP-GL: AutoCAD, CorelDRAW, sign software, and many CAM tools.
+
+ClearHPGL is firmware for the Teknic ClearCore controller. With it, a
+ClearCore and two ClearPath servos operate as an HP-GL plotter. You point a
+plotter driver at the USB port, the serial port, or the network address of
+the board, and the machine draws. You do not need a plug-in, a converter, or
+special software on the computer.
+
+ClearHPGL has three parts:
+
+\begin{itemize}
+  \item The \textbf{firmware}, which runs on the ClearCore. It receives HP-GL,
+        plans the motion, and controls the servos and the pen.
+  \item The \textbf{ClearHPGL desktop app} for Windows. It is optional. It
+        opens DXF and HP-GL files, shows a preview, sends jobs, and shows the
+        pen as it moves.
+  \item The \textbf{command-line client}, \file{Firmware/host/clearhpgl_cli.py}.
+        It finds boards on the network, sends files, and gives commands to
+        the console.
+\end{itemize}
+
+\section{Features}
+
+\begin{itemize}
+  \item \textbf{Standard plotter drivers.} The board operates like an HP 7475A
+        or an HP DraftMaster. HP-GL and HP-GL/2 plotter drivers operate with
+        it without changes.
+  \item \textbf{Three links.} A USB virtual COM port, an RS-232 or TTL serial
+        port, and a TCP print port on the network (port 9100).
+  \item \textbf{Better path order.} The board can keep a full job before it
+        plots. It joins strokes that touch, draws all shapes inside a contour
+        before the contour, and goes to the nearest shape next.
+  \item \textbf{Smooth, coordinated motion.} The two axes move as one machine,
+        with lookahead at each junction. Arcs and circles are true arcs, not
+        short straight lines.
+  \item \textbf{Safety monitoring.} The board monitors the emergency stop
+        input, the alerts of the servos, and their ready signals. A fault
+        stops the machine and latches.
+  \item \textbf{Desktop app.} A preview of DXF and HP-GL files that uses the
+        interpreter of the firmware, a live 3D view of the bed, job
+        monitoring, and machine setup.
+\end{itemize}
+
+\section{How a Job Goes Through the Board}
+
+Figure~\ref{fig:pipeline} shows the path of a job. Each stage is a part of
+the firmware.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  font=\sffamily\small,
+  box/.style={draw=steel,fill=steel!8,rounded corners=2pt,align=center,
+              minimum height=1.1cm,text width=2.35cm,inner sep=3pt},
+  src/.style={draw=rulegray,fill=codebg,rounded corners=2pt,align=center,
+              text width=2.6cm,minimum height=0.9cm,inner sep=3pt},
+  outbox/.style={draw=teal,fill=teal!10,rounded corners=2pt,align=center,
+              text width=2.6cm,minimum height=0.9cm,inner sep=3pt},
+  arr/.style={-{Stealth[length=2.2mm]},thick,color=navy}]
+  \node[src] (cad) {CAD or CAM software\\\scriptsize HP-GL driver};
+  \node[src,below=0.5cm of cad] (app) {ClearHPGL app\\\scriptsize DXF or HP-GL file};
+  \node[src,below=0.5cm of app] (cli) {Command line\\\scriptsize \texttt{copy}, CLI};
+  \node[box,right=1.1cm of app] (ch) {Input channel\\\scriptsize USB, COM, TCP};
+  \node[box,right=0.45cm of ch] (int) {HP-GL\\interpreter};
+  \node[box,right=0.45cm of int] (opt) {Job\\optimizer};
+  \node[box,below=0.9cm of opt] (mp) {Motion\\planner};
+  \node[outbox,left=0.45cm of mp,text width=3.0cm] (mot) {ClearPath X and Y\\pen lift};
+  \begin{scope}[on background layer]
+    \node[draw=navy,dashed,rounded corners=4pt,inner sep=7pt,
+          fit=(ch)(int)(opt)(mp),label={[font=\sffamily\scriptsize\color{navy}]north:ClearCore running ClearHPGL}] {};
+  \end{scope}
+  \draw[arr] (cad.east) -- ++(0.4,0) |- (ch.west);
+  \draw[arr] (app.east) -- (ch.west);
+  \draw[arr] (cli.east) -- ++(0.4,0) |- (ch.west);
+  \draw[arr] (ch) -- (int);
+  \draw[arr] (int) -- (opt);
+  \draw[arr] (opt) -- (mp);
+  \draw[arr] (mp) -- (mot);
+\end{tikzpicture}
+\caption{The path of a job through ClearHPGL}\label{fig:pipeline}
+\end{figure}
+
+\begin{description}[style=nextline,leftmargin=1.2em,font=\sffamily\bfseries\color{navy}]
+  \item[Input channel] Receives jobs from all links. One source plots at a
+        time, and the other sources wait. The channel does the flow control
+        of a plotter (XON/XOFF and ENQ/ACK) and answers the \code{ESC .}
+        device-control sequences. It removes the PCL and PJL wrappers that
+        Windows drivers add.
+  \item[HP-GL interpreter] Changes HP-GL into geometry, as an HP plotter
+        does: scaling, rotation, clip windows, arcs and circles, and HP-GL/2
+        encoded polylines. It gives a model name that you can set, so 7475A
+        drivers and DraftMaster drivers both operate.
+  \item[Job optimizer] For jobs from CAD software, keeps the full job and
+        then plots it in a better order. Section~\ref{sec:optimizer} tells
+        you more.
+  \item[Motion planner] Moves the two servos as one coordinated machine,
+        with lookahead and limits for acceleration and for speed at corners.
+  \item[Safety] Monitors the emergency stop, the servo alerts, and the servo
+        ready signals (HLFB) all the time. A fault disables the motors, stops
+        the job, and latches until you clear it.
+\end{description}
+
+\section{What ClearHPGL Does Not Do}\label{sec:limits}
+
+Table~\ref{tab:limits} shows the functions that this version does not have.
+Do not plan a machine that needs them.
+
+\begin{table}[htbp]
+\centering
+\caption{Functions not in firmware version 0.1.0}\label{tab:limits}
+\begin{tabularx}{\linewidth}{@{}P{0.3\linewidth}L@{}}
+\toprule
+\textbf{Function} & \textbf{Result} \\
+\midrule
+Text (\cmd{LB}) & The board reads the text and does not draw it. The
+\code{labels_skipped} counter in \cmd{status} shows how many labels it skipped.
+Set your CAD software to send text as lines (``explode'' the text). \\
+Area fills & \cmd{RA}, \cmd{RR}, and \cmd{WG} draw only the outline. \\
+Line types and pen widths & All lines are solid. \cmd{LT} and \cmd{PW} have no effect. \\
+Homing and limit switches & The machine has no home position. Plotter 0,0 is
+where the pen is at power-up, or where you set the origin. \\
+Pen changes & The machine has one pen. \cmd{SP} with a number above 1 does not
+stop for a pen change. \\
+Drag knives & The board does not offset the path for a tangential or drag knife. \\
+Lasers & Laser control is a plan for the future. Chapter~\ref{ch:safety} tells
+you why you must not connect a laser now. \\
+\bottomrule
+\end{tabularx}
+\end{table}

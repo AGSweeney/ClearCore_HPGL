@@ -1,0 +1,138 @@
+\chapter{Preface}
+\markboth{Preface}{Preface}
+
+\section*{Purpose of This Manual}
+
+This manual tells you how to build, set up, and operate a pen plotter that
+uses ClearHPGL. It tells you how to install the firmware on a Teknic
+ClearCore, how to connect the servos, the pen lift, and the emergency stop,
+and how to set the board for your machine. It also tells you how to plot from
+the ClearHPGL desktop app, from AutoCAD, and from other software.
+
+ClearHPGL is firmware for the ClearCore. With it, the ClearCore and two
+ClearPath servos operate as an HP-GL pen plotter. A CAD program sends a
+drawing through a standard plotter driver, and the machine draws it. The
+optional desktop app shows a preview of the drawing, sends jobs, and shows
+the pen as it moves.
+
+\section*{Audience}
+
+This manual is for persons who build and operate the machine. You must know
+how to connect motors and switches to an industrial controller, and how to
+use a serial terminal and a Windows computer. Knowledge of HP-GL helps, but
+it is not necessary. The glossary defines the terms that this manual uses.
+
+\section*{How to Use This Manual}
+
+Table~\ref{tab:roadmap} shows where to start for each task.
+
+\begin{table}[htbp]
+\centering
+\caption{Where to start}\label{tab:roadmap}
+\begin{tabularx}{\linewidth}{@{}P{0.46\linewidth}L@{}}
+\toprule
+\textbf{Task} & \textbf{Read} \\
+\midrule
+Learn what ClearHPGL does and does not do & Chapter~\ref{ch:intro} \\
+Operate the machine safely & Chapter~\ref{ch:safety} \\
+Connect the servos, the pen lift, and the emergency stop & Chapter~\ref{ch:hardware} \\
+Install or update the firmware & Chapter~\ref{ch:firmware} \\
+Set the board for your machine and do the first moves & Chapter~\ref{ch:setup} \\
+Plot from the desktop app & Chapter~\ref{ch:app} \\
+Plot from AutoCAD or other software & Chapter~\ref{ch:cad} \\
+Understand how the board processes a job & Chapter~\ref{ch:jobs} \\
+Find the cause of a fault & Chapter~\ref{ch:trouble} \\
+Look up a command, a setting, or an HP-GL instruction & Appendixes~\ref{app:console}--\ref{app:network} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section*{Conventions}
+
+\subsection*{Language}
+
+The text of this manual follows ASD-STE100, \textit{Simplified Technical
+English}.\footnote{ASD, \textit{ASD-STE100: Simplified Technical English},
+issue~8 (Brussels: ASD, 2021).} STE makes the text easy to read and easy to
+translate. These are the rules that you will see most:
+
+\begin{itemize}
+  \item A procedure step contains one instruction. Each step starts with a
+        verb in the imperative, for example ``Set'' or ``Do not.''
+  \item A sentence in a procedure has no more than 20 words. A sentence in
+        a description has no more than 25 words.
+  \item The text uses the active voice and the simple tenses.
+  \item A word has one meaning. For example, ``enable'' always means ``supply
+        power to the motor windings,'' and ``plot'' always means ``draw a job
+        on the machine.''
+  \item A warning or a caution comes before the step that it applies to.
+\end{itemize}
+
+Technical names, such as setting names, console commands, HP-GL
+instructions, and file names, are not changed.
+
+\subsection*{Style}
+
+The apparatus of this manual follows \textit{The Chicago Manual of
+Style}.\footnote{\textit{The Chicago Manual of Style}, 18th ed. (Chicago:
+University of Chicago Press, 2024).} Chapter and section titles use headline
+style. Lists of three or more items use the serial comma. Ranges use an en
+dash, for example IO-0--IO-5. The manual uses the alternative rule for numbers
+in Chicago 9.3: words for zero through nine in running text, and numerals for
+10 and above. Numerals are used for all quantities with a unit, for setting
+values, and for code. Notes are footnotes in the Chicago notes-bibliography
+style, and the bibliography is at the end of the manual.
+
+\subsection*{Safety Notices}
+
+\begin{warning}
+A warning tells you about a condition that can cause injury or death. It
+also tells you about a condition that can make machinery move when you do
+not expect it.
+\end{warning}
+
+\begin{caution}
+A caution tells you about a condition that can cause damage to equipment,
+to the material on the bed, or to the settings of the board.
+\end{caution}
+
+\begin{note}
+\notelabel A note gives information that helps you do a task. It does not
+tell you about a hazard.
+\end{note}
+
+\subsection*{Typography}
+
+\begin{table}[htbp]
+\centering
+\caption{Typographic conventions}\label{tab:typo}
+\begin{tabularx}{\linewidth}{@{}P{0.32\linewidth}L@{}}
+\toprule
+\textbf{Example} & \textbf{Meaning} \\
+\midrule
+\cmd{set width_mm 600} & A console command, an HP-GL instruction, or text that you type. \\
+\key{draw_mm_s} & A board setting. Appendix~\ref{app:settings} lists all settings. \\
+\file{Firmware/build.ps1} & A file or a directory, relative to the root of the repository. \\
+\menu{Plotter settings} & A menu, a button, a field, or a check box in the desktop app. \\
+\conn{M0}, \conn{DI-6} & A connector on the ClearCore. \\
+\term{hard clip} & A term that the glossary defines, at its first use. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+All lengths are in millimeters (mm) and all speeds are in millimeters per
+second (mm/s), unless the text gives a different unit. HP-GL uses
+\term{plotter units}: one plotter unit is \SI{0.025}{mm}, so there are
+40 plotter units in \SI{1}{mm}.
+
+\section*{Related Documents}
+
+The file \file{Firmware/PROTOCOL.md} in the repository is the technical
+reference for the firmware. It lists the links, the HP-GL instructions, the
+console commands, and the settings. This manual contains that information.
+If this manual and \file{PROTOCOL.md} are different, \file{PROTOCOL.md}
+agrees with the firmware. Use it, and report the difference.
+
+Teknic supplies the manuals for the ClearCore and for the ClearPath servos.
+Use them for the electrical data of the hardware: power supplies,
+connector pinouts, and the setup of each servo. The bibliography lists them.

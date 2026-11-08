@@ -1,0 +1,104 @@
+\chapter{Plot from CAD Software}\label{ch:cad}
+
+The board operates like an HP plotter. Any program with an HP-GL or HP-GL/2
+plotter driver can plot to it. You do not need the desktop app.
+
+\section{AutoCAD}
+
+AutoCAD has drivers for the HP DraftMaster plotters. Both of the drivers in
+table~\ref{tab:acad} plot directly to the board.
+
+\begin{table}[htbp]
+\centering
+\caption{AutoCAD drivers for ClearHPGL}\label{tab:acad}
+\begin{tabularx}{\linewidth}{@{}P{0.3\linewidth}P{0.34\linewidth}L@{}}
+\toprule
+\textbf{Driver} & \textbf{Output} & \textbf{Setting on the board} \\
+\midrule
+DraftMaster RX 7596B (HP-GL/2), recommended & True arcs and compact encoded
+polylines. The driver places the plot. & None. \\
+Draftmaster 2 (7596A) (HP-GL) & Arcs as short lines. Plotter 0,0 is at the
+center of the sheet. & \cmd{set ident 7596A} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{procedure}{Set up an AutoCAD plotter for ClearHPGL}
+\begin{enumerate}
+  \item In AutoCAD, open the \menu{Add-a-Plotter} wizard.
+  \item Select the manufacturer HP and the model \menu{DraftMaster RX 7596B}.
+  \item Select the COM port of the board (the USB port or \conn{COM-0}/\conn{COM-1}).
+  \item In \menu{Configure Port}, set the flow control to \menu{XON/XOFF}.
+  \item Add a custom paper size that is the same as the plot area, with no
+        margins.
+  \item Plot a small drawing to test the setup.
+\end{enumerate}
+\end{procedure}
+
+\begin{note}
+\notelabel AutoCAD sends its own pen speed (\cmd{VS}) from its pen table.
+To use the speed of the board, type \cmd{set job_speed 0}. Then the board
+always uses \key{draw_mm_s} for the pen-down speed.
+\end{note}
+
+The path order of AutoCAD is not important. By default, the board keeps each
+job from the USB port and the COM ports, and plots it in a better order
+(section~\ref{sec:optimizer}).
+
+\subsection{The Model Name}
+
+The board replies to the HP-GL \cmd{OI} instruction with the model name in
+\key{ident} (default \code{7475A}). Some drivers use this reply. The model
+name also sets the position of plotter 0,0:
+
+\begin{itemize}
+  \item For \code{7475A}, \code{7550A}, and the other small models, plotter
+        0,0 is the lower-left corner of the plot area.
+  \item For the large DraftMaster models (\code{758x} and \code{759x}, for
+        example \code{7596A}), plotter 0,0 is the center of the plot area.
+        Their drivers send coordinates around the center.
+\end{itemize}
+
+Set \key{ident} to the model that your driver expects.
+
+\section{Other Software}
+
+Use a driver for an HP 7475A, an HP 7550A, or an HP DraftMaster. Most sign,
+vinyl, and CAM programs have one of these drivers. Then:
+
+\begin{itemize}
+  \item Point the driver at the COM port of the board, or at TCP port 9100 of
+        the board.
+  \item On a COM port, use XON/XOFF flow control.
+  \item Set the paper size to the plot area.
+  \item Set the program to send text as lines. The board does not draw HP-GL
+        text (\cmd{LB}).
+\end{itemize}
+
+Windows plotter drivers often put PCL or PJL commands around the HP-GL/2. The
+board removes them.
+
+\section{Send a File without a Driver}
+
+You can send an HP-GL file directly to the board.
+
+\begin{description}[style=nextline,leftmargin=1.2em,font=\sffamily\bfseries\color{navy}]
+  \item[Windows, USB or COM port]
+\begin{lstlisting}[language=console]
+copy /b drawing.plt COM3
+\end{lstlisting}
+  \item[Linux or macOS, network]
+\begin{lstlisting}[language=console]
+nc 10.168.41.5 9100 < drawing.plt
+\end{lstlisting}
+  \item[Command-line client, any system with Python]
+\begin{lstlisting}[language=console]
+python Firmware/host/clearhpgl_cli.py discover
+python Firmware/host/clearhpgl_cli.py --host 10.168.41.5 send drawing.plt
+python Firmware/host/clearhpgl_cli.py --serial COM3 send drawing.plt
+\end{lstlisting}
+\end{description}
+
+On the network, one connection to port 9100 is one job. The job ends when the
+connection closes. Appendix~\ref{app:network} gives more information about
+the command-line client.

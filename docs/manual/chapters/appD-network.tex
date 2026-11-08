@@ -1,0 +1,80 @@
+\chapter{Network and Command-Line Client}\label{app:network}
+
+\section{Ports}
+
+\begin{table}[htbp]
+\centering
+\caption{Network ports of the board}\label{tab:ports}
+\begin{tabularx}{\linewidth}{@{}P{0.16\linewidth}L@{}}
+\toprule
+\textbf{Port} & \textbf{Function} \\
+\midrule
+TCP 9100 & HP-GL, raw print port. One connection is one job. \\
+TCP 9300 & Setup and status console. One client at a time. \\
+UDP 9302 & Discovery. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+These ports are different from the ports of ClearCNC (8888, 8889, 10040) and
+ClearCoreROS (9200--9203).
+
+\section{Discovery}
+
+To find boards, a computer sends the text \code{CLEARHPGL_DISCOVER?} as a
+UDP broadcast to port 9302. Each board replies with one line:
+
+\begin{lstlisting}[language=console]
+CLEARHPGL ClearHPGL_Firmware IP=10.168.41.5 HPGL=9100 CONSOLE=9300 FW=0.1.0 IDENT=7475A
+\end{lstlisting}
+
+The \menu{Discover} button of the desktop app and the \cmd{discover} command
+of the client use this method. A broadcast does not go through a router, so
+discovery finds only boards on the local subnet.
+
+\section{The Command-Line Client}
+
+\file{Firmware/host/clearhpgl_cli.py} is a client for the board. It needs
+Python~3. For COM ports, it also needs the \code{pyserial} package.
+
+\begin{table}[htbp]
+\centering
+\caption{Commands of the client}\label{tab:cli}
+\begin{tabularx}{\linewidth}{@{}P{0.42\linewidth}L@{}}
+\toprule
+\textbf{Command} & \textbf{Function} \\
+\midrule
+\code{discover} & Find boards on the local network. \\
+\code{--host} \textit{ip} \code{send} \textit{file} & Send an HP-GL file to TCP port 9100. \\
+\code{--serial COM3 send} \textit{file} & Send an HP-GL file to a COM port with XON/XOFF, as a plotter driver does. \\
+\code{--host} \textit{ip} \code{query "OI;OS;"} & Send output instructions and show the replies. \\
+\code{--host} \textit{ip} \code{console} \textit{command} & Send one console command, for example \code{console status}. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Examples:
+
+\begin{lstlisting}[language=console]
+python Firmware/host/clearhpgl_cli.py discover
+python Firmware/host/clearhpgl_cli.py --host 10.168.41.5 send drawing.plt
+python Firmware/host/clearhpgl_cli.py --host 10.168.41.5 query "OI;OS;OA;"
+python Firmware/host/clearhpgl_cli.py --host 10.168.41.5 console set draw_mm_s 80
+\end{lstlisting}
+
+\begin{note}
+\notelabel The \code{console} command connects to port 9300. If the desktop
+app is connected over Ethernet, it has the console, and the client cannot
+connect. Close the app connection first.
+\end{note}
+
+\section{Test without a Board}
+
+\file{Firmware/host/fake_plotter.py} operates as a board on the computer. Use
+it to try the desktop app without hardware:
+
+\begin{lstlisting}[language=console]
+python Firmware/host/fake_plotter.py --bind 127.0.0.1
+\end{lstlisting}
+
+Then connect the app to 127.0.0.1.

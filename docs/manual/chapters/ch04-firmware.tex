@@ -1,0 +1,85 @@
+\chapter{Install the Firmware}\label{ch:firmware}
+
+This chapter tells you how to build the firmware and how to load it into the
+ClearCore. Do the same procedure when you update the firmware.
+
+\section{What You Need}
+
+\begin{itemize}
+  \item A Windows computer with Microchip Studio 7 (formerly Atmel Studio 7).
+        The build script uses its ARM compiler and its \file{make.exe}.
+  \item The ClearHPGL source repository.
+  \item A USB cable from the computer to the ClearCore.
+  \item A 24~V supply for the ClearCore. The board must not get its power
+        only from USB when it writes its settings.
+\end{itemize}
+
+The repository contains the flash tools that you need: \file{tools/bossac/bossac.exe}
+and \file{tools/flash_clearcore.cmd}, from Teknic.
+
+\section{Build and Load the Firmware}
+
+\begin{warning}
+Loading firmware restarts the board. Make sure that no job is plotting and
+that the work area is clear before you start.
+\end{warning}
+
+\begin{procedure}{Build the firmware and load it into the ClearCore}
+\begin{enumerate}
+  \item Connect the ClearCore to the computer with the USB cable.
+  \item Close all programs that use the USB COM port of the board: a serial
+        terminal, the desktop app, or a CAD plotter driver.
+  \item Open PowerShell in the root directory of the repository.
+  \item Type this command and press Enter:
+\begin{lstlisting}[language=console]
+./Firmware/build.ps1 -Flash
+\end{lstlisting}
+  \item Wait. The script builds LwIP, libClearCore, and the firmware. Then it
+        finds the board, puts it into its bootloader, and writes the
+        firmware.
+  \item Make sure that the output contains the line \code{Verify successful}.
+\end{enumerate}
+\end{procedure}
+
+Without \code{-Flash}, the script only builds. The firmware files are in
+\file{Firmware/ClearCoreFirmware/Release/}: \file{ClearHPGL_Firmware.bin} and
+\file{ClearHPGL_Firmware.uf2}. To load a \file{.bin} file that you received
+from a different person, use this command:
+
+\begin{lstlisting}[language=console]
+tools\flash_clearcore.cmd path\to\ClearHPGL_Firmware.bin
+\end{lstlisting}
+
+\begin{note}
+\notelabel The flash script looks for the board on its normal USB port. Then
+it waits for the bootloader port. The two ports have different COM numbers.
+This is correct. If the script cannot find the board, push the reset button
+of the ClearCore two times quickly to start the bootloader, then run the
+script again.
+\end{note}
+
+\section{Make Sure That the Firmware Operates}
+
+\begin{procedure}{Examine the firmware after you load it}
+\begin{enumerate}
+  \item Open the USB COM port of the board in a serial terminal (for example
+        PuTTY). The baud rate has no effect.
+  \item Type \cmd{menu} on a line by itself and press Enter. The console
+        shows its list of commands.
+  \item Type \cmd{version} and press Enter. Make sure that the version is the
+        one that you loaded.
+  \item Type \cmd{status} and press Enter. Make sure that \code{fault=none}.
+  \item Type \cmd{exit} and press Enter to close the console.
+\end{enumerate}
+\end{procedure}
+
+The settings stay in the board when you load new firmware. A new firmware
+version that adds a setting gives it its default value.
+
+\section{Settings of Other Firmware}
+
+The settings of ClearHPGL have their own marker (\code{CHPG}) in the
+nonvolatile memory. If the board ran ClearCoreROS or ClearAI before, and
+ClearHPGL has no saved settings yet, ClearHPGL keeps the network settings of
+that firmware, so the board keeps its IP address. All other settings start at
+their defaults.

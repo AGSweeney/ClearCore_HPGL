@@ -1,0 +1,131 @@
+\chapter{Settings}\label{app:settings}
+
+The board keeps its settings in nonvolatile memory. Change a setting with
+\cmd{set} \textit{key value} in the console, or in \menu{Plotter settings} in
+the desktop app. \cmd{config} shows all values. \cmd{defaults} sets the
+factory values.
+
+The column ``When'' tells you when a change is possible
+(table~\ref{tab:when}): \textbf{live} (at any time), \textbf{idle} (between
+jobs), \textbf{disabled} (with the motors disabled), or \textbf{restart}
+(after \cmd{restart}).
+
+\section{Machine}
+
+\begin{longtable}{@{}P{0.2\linewidth}P{0.11\linewidth}P{0.16\linewidth}P{0.1\linewidth}P{0.33\linewidth}@{}}
+\caption{Machine settings}\label{tab:set-machine}\\
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Range} & \textbf{When} & \textbf{Function} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Range} & \textbf{When} & \textbf{Function} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\key{steps_rev_x} & 800 & 1--1,000,000 & disabled & X motor steps per revolution. \\
+\key{steps_rev_y} & 800 & 1--1,000,000 & disabled & Y motor steps per revolution. \\
+\key{mm_rev_x} & 5.0 & 0.001--10,000 & disabled & X travel per motor revolution, mm. \\
+\key{mm_rev_y} & 5.0 & 0.001--10,000 & disabled & Y travel per motor revolution, mm. \\
+\key{dir_x} & 1 & 1 or -1 & disabled & Direction of X. -1 reverses it. \\
+\key{dir_y} & 1 & 1 or -1 & disabled & Direction of Y. -1 reverses it. \\
+\key{width_mm} & 400 & 1--100,000 & idle & Plot area in X (the hard clip), mm. \\
+\key{height_mm} & 300 & 1--100,000 & idle & Plot area in Y (the hard clip), mm. \\
+\end{longtable}
+
+\section{Motion}
+
+\begin{longtable}{@{}P{0.2\linewidth}P{0.11\linewidth}P{0.16\linewidth}P{0.1\linewidth}P{0.33\linewidth}@{}}
+\caption{Motion settings}\label{tab:set-motion}\\
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Range} & \textbf{When} & \textbf{Function} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Range} & \textbf{When} & \textbf{Function} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\key{draw_mm_s} & 100 & 0.1--10,000 & live & Pen-down speed, mm/s. \cmd{VS} without a value sets it back to this value. \\
+\key{travel_mm_s} & 200 & 0.1--10,000 & live & Pen-up speed, mm/s. \\
+\key{max_mm_s} & 250 & 0.1--10,000 & live & Highest speed that \cmd{VS} can set, mm/s. \\
+\key{job_speed} & 1 & 0 or 1 & live & 1: \cmd{VS} in a job sets the pen-down speed. 0: always \key{draw_mm_s}. \\
+\key{accel_mm_s2} & 2000 & 1--1,000,000 & live & Acceleration along the path, mm/s\textsuperscript{2}. Also limits the speed on curves. \\
+\key{corner_mm_s} & 20 & 0--10,000 & live & Largest change of speed of one axis at a corner, mm/s. \\
+\end{longtable}
+
+\section{Pen}
+
+\begin{longtable}{@{}P{0.2\linewidth}P{0.11\linewidth}P{0.16\linewidth}P{0.1\linewidth}P{0.33\linewidth}@{}}
+\caption{Pen settings}\label{tab:set-pen}\\
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Range} & \textbf{When} & \textbf{Function} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Range} & \textbf{When} & \textbf{Function} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\key{pen_mode} & 0 & 0 or 1 & disabled & 0: digital output. 1: servo on \conn{M2}. \\
+\key{pen_io} & 0 & 0--5 & disabled & Output for the pen, \conn{IO-0}--\conn{IO-5} (\key{pen_mode}~0). \\
+\key{pen_active_high} & 1 & 0 or 1 & disabled & 1: the output is on when the pen is down. \\
+\key{pen_down_ms} & 150 & 0--10,000 & live & Settle time after the pen goes down, ms. \\
+\key{pen_up_ms} & 100 & 0--10,000 & live & Settle time after the pen goes up, ms. \\
+\key{z_up_steps} & 0 & $\pm$100,000,000 & disabled & \conn{M2} pen-up position, steps. \\
+\key{z_down_steps} & 800 & $\pm$100,000,000 & disabled & \conn{M2} pen-down position, steps. \\
+\key{z_vel_steps} & 20,000 & 1--10,000,000 & disabled & \conn{M2} speed, steps/s. \\
+\key{z_accel_steps} & 400,000 & 1--100,000,000 & disabled & \conn{M2} acceleration, steps/s\textsuperscript{2}. \\
+\end{longtable}
+
+\section{Safety and Jobs}
+
+\begin{longtable}{@{}P{0.2\linewidth}P{0.11\linewidth}P{0.16\linewidth}P{0.1\linewidth}P{0.33\linewidth}@{}}
+\caption{Safety and job settings}\label{tab:set-safety}\\
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Range} & \textbf{When} & \textbf{Function} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Range} & \textbf{When} & \textbf{Function} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\key{estop_di6} & 1 & 0--2 & live & 0: off. 1: fault when \conn{DI-6} is low. 2: fault when it is high. \\
+\key{auto_enable} & 1 & 0 or 1 & live & 1: enable the motors when a job arrives. \\
+\key{hlfb_check} & 1 & 0 or 1 & live & 1: the servos must supply HLFB when the motors enable. \\
+\key{optimize} & 3 & 0--7 & live & Sources that the optimizer orders: 1 USB, 2 COM, 4 network. Add the values. \\
+\key{ident} & \code{7475A} & text & live & Reply to \cmd{OI}. \code{758x} and \code{759x} (DraftMaster) put plotter 0,0 at the center of the bed. \\
+\end{longtable}
+
+\section{Serial Port and Network}
+
+\begin{longtable}{@{}P{0.2\linewidth}P{0.11\linewidth}P{0.16\linewidth}P{0.1\linewidth}P{0.33\linewidth}@{}}
+\caption{Serial port and network settings}\label{tab:set-links}\\
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Range} & \textbf{When} & \textbf{Function} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Range} & \textbf{When} & \textbf{Function} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\key{com_port} & 0 & 0--2 & restart & HP-GL serial port. 0: off. 1: \conn{COM-0}. 2: \conn{COM-1}. \\
+\key{com_baud} & 9600 & 300--1,000,000 & restart & Baud rate of the serial port. \\
+\key{com_handshake} & 1 & 0--2 & restart & 0: none. 1: XON/XOFF. 2: RTS/CTS. \\
+\key{com_rs232} & 1 & 0 or 1 & restart & 1: RS-232 levels. 0: TTL levels. \\
+\key{net_mode} & 0 & 0 or 1 & restart & 0: DHCP. 1: static address. \\
+\key{ip} & -- & address & restart & Static IP address. \\
+\key{netmask} & -- & address & restart & Static netmask. \\
+\key{gateway} & -- & address & restart & Static gateway. \\
+\end{longtable}
+
+\begin{note}
+\notelabel With DHCP, if the board gets no address, it uses 192.168.0.110.
+\end{note}

@@ -1,0 +1,174 @@
+% ClearHPGL User's Manual
+% Copyright (c) 2026 Adam G. Sweeney. Text written to ASD-STE100 and edited
+% to The Chicago Manual of Style, 18th edition.
+%
+% Build (Tectonic, XeTeX engine):  tectonic clearhpgl-manual.tex
+\input{preamble}
+
+\newcommand{\docnumber}{CH-UM-100}
+\newcommand{\docrevision}{Revision A}
+\newcommand{\fwversion}{0.1.0}
+\newcommand{\docdate}{November 2026}
+
+\begin{document}
+
+% =========================================================================
+% Cover / title page
+% =========================================================================
+\frontmatter
+\pagestyle{empty}
+\begin{titlepage}
+\begin{tikzpicture}[remember picture,overlay]
+  % background bands
+  \fill[navy] (current page.north west) rectangle ([yshift=-15.2cm]current page.north east);
+  \fill[teal] ([yshift=-15.2cm]current page.north west) rectangle ([yshift=-15.55cm]current page.north east);
+  \fill[steel!10] ([yshift=-15.55cm]current page.north west) rectangle (current page.south east);
+
+  % plotter motif: a bed grid, a plotted part with rounded corners and holes, the pen path
+  \begin{scope}[shift={([xshift=-7.6cm,yshift=-11.4cm]current page.north east)}]
+    \foreach \x in {0,0.5,...,6} { \draw[white!18!navy,line width=0.3pt] (\x,0) -- (\x,6.5); }
+    \foreach \y in {0,0.5,...,6.5} { \draw[white!18!navy,line width=0.3pt] (0,\y) -- (6,\y); }
+    % pen-up travel
+    \draw[white!45!navy,line width=0.6pt,dashed] (0,0) -- (1.2,1.2) -- (1.9,4.6) -- (3.6,4.6) -- (4.8,2.0);
+    % part outline (drawn last)
+    \draw[white,line width=1.3pt,rounded corners=0.45cm] (0.8,0.8) rectangle (5.2,5.6);
+    % holes and an arc slot (drawn first)
+    \draw[teal,line width=1.2pt] (1.9,4.6) circle (0.42);
+    \draw[teal,line width=1.2pt] (3.6,4.6) circle (0.42);
+    \draw[teal,line width=1.2pt] (2.0,2.0) arc (180:360:0.9) -- (3.8,2.6) arc (0:180:0.9) -- cycle;
+    \draw[teal,line width=1.2pt] (4.8,2.0) circle (0.25);
+    % pen carriage
+    \fill[amber] (1.2,1.2) circle (3.2pt);
+    \draw[amber,line width=0.8pt] (1.2,1.2) circle (6pt);
+  \end{scope}
+
+  % title block
+  \node[anchor=north west,text=teal!70!white,font=\sffamily\bfseries\large]
+    at ([xshift=2.2cm,yshift=-3.0cm]current page.north west)
+    {HP-GL PEN PLOTTER FOR THE TEKNIC CLEARCORE};
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\fontsize{58}{60}\selectfont]
+    at ([xshift=2.1cm,yshift=-3.9cm]current page.north west) {ClearHPGL};
+  \node[anchor=north west,text=white,font=\sffamily\fontsize{22}{27}\selectfont,align=left]
+    at ([xshift=2.2cm,yshift=-6.6cm]current page.north west)
+    {User's Manual};
+  \node[anchor=north west,text=white!80!steel,font=\sffamily\normalsize,align=left,text width=8cm]
+    at ([xshift=2.2cm,yshift=-8.2cm]current page.north west)
+    {Firmware, desktop app, and machine setup. Plot from AutoCAD and other CAD software over USB, serial, or Ethernet.};
+  \node[anchor=south west,text=white,font=\sffamily\small]
+    at ([xshift=2.2cm,yshift=-14.6cm]current page.north west)
+    {Firmware version \fwversion\quad\textbar\quad \docnumber, \docrevision};
+
+  % author block
+  \node[anchor=north west,font=\sffamily\small\color{steel},align=left]
+    at ([xshift=2.2cm,yshift=-17.2cm]current page.north west) {AUTHOR AND DEVELOPER};
+  \node[anchor=north west,font=\sffamily\bfseries\fontsize{24}{28}\selectfont\color{navy},align=left]
+    at ([xshift=2.2cm,yshift=-17.9cm]current page.north west) {Adam G. Sweeney};
+  \node[anchor=north west,font=\sffamily\small\color{navy!80},align=left]
+    at ([xshift=2.2cm,yshift=-19.2cm]current page.north west) {agsweeney@gmail.com};
+
+  \draw[rulegray,line width=0.6pt]
+    ([xshift=2.2cm,yshift=-21.2cm]current page.north west) -- ([xshift=-2.2cm,yshift=-21.2cm]current page.north east);
+  \node[anchor=north west,font=\sffamily\footnotesize\color{steel},align=left,text width=8.5cm]
+    at ([xshift=2.2cm,yshift=-21.6cm]current page.north west)
+    {Written in ASD-STE100 Simplified Technical English.\\
+     Edited to \textit{The Chicago Manual of Style}, 18th edition.};
+  \node[anchor=north east,font=\sffamily\footnotesize\color{steel},align=right]
+    at ([xshift=-2.2cm,yshift=-21.6cm]current page.north east)
+    {\docdate\\MIT License};
+\end{tikzpicture}
+\end{titlepage}
+
+% =========================================================================
+% Copyright page (verso)
+% =========================================================================
+\newpage
+\thispagestyle{empty}
+\vspace*{\fill}
+{\small\raggedright
+\textbf{ClearHPGL User's Manual}\\
+Document \docnumber, \docrevision, \docdate\\
+For ClearHPGL firmware version \fwversion\ and the ClearHPGL desktop app
+
+\bigskip
+Copyright \textcopyright\ 2026 Adam G. Sweeney. All rights reserved.
+
+\medskip
+The ClearHPGL software is released under the MIT License. The full license
+text is in the file \file{LICENSE} at the root of the source repository. The
+software builds on code by others that keeps its own license; the file
+\file{THIRD\_PARTY\_NOTICES.md} lists it. The software is supplied ``as
+is,'' without warranty of any kind.
+
+\medskip
+ClearCore\texttrademark\ and ClearPath\texttrademark\ are trademarks of
+Teknic, Inc. HP-GL and HP-GL/2 are trademarks of HP Inc. AutoCAD is a
+trademark of Autodesk, Inc. Windows is a trademark of Microsoft Corporation.
+ASD-STE100\textsuperscript{\textregistered} is a trademark of ASD
+(AeroSpace, Security and Defence Industries Association of Europe). All other
+product names are trademarks of their respective owners. Their use in this
+manual identifies products and does not imply endorsement.
+
+\medskip
+\textbf{Status.} ClearHPGL is experimental. It operates on one bench machine
+(a ClearCore, ClearPath-SD servos on X and Y, and a pen on an output) and
+plots real jobs, also directly from AutoCAD. It is not certified for
+production or for applications where safety is critical. Read
+chapter~\ref{ch:safety} before you operate the machine.
+
+\medskip
+\textbf{Editorial conventions.} This manual uses ASD-STE100 Simplified
+Technical English for its text and \textit{The Chicago Manual of Style},
+18th edition, for its apparatus: capitalization of titles, punctuation,
+numbers, captions, notes, and bibliography. The preface gives the details.
+
+\bigskip
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Revision} & \textbf{Change} \\
+\midrule
+A, \docdate & First issue, for firmware version \fwversion. \\
+\bottomrule
+\end{tabular}
+}
+\vspace*{1cm}
+
+% =========================================================================
+% Contents and lists
+% =========================================================================
+\cleardoublepage
+\pagestyle{fancy}
+\pdfbookmark[0]{Contents}{toc}
+\tableofcontents
+\cleardoublepage
+\phantomsection\addcontentsline{toc}{chapter}{Figures}
+\listoffigures
+\phantomsection\addcontentsline{toc}{chapter}{Tables}
+\listoftables
+
+\include{chapters/preface}
+
+% =========================================================================
+% Main text
+% =========================================================================
+\mainmatter
+\include{chapters/ch01-introduction}
+\include{chapters/ch02-safety}
+\include{chapters/ch03-hardware}
+\include{chapters/ch04-firmware}
+\include{chapters/ch05-setup}
+\include{chapters/ch06-app}
+\include{chapters/ch07-cad}
+\include{chapters/ch08-jobs}
+\include{chapters/ch09-troubleshooting}
+
+\appendix
+\include{chapters/appA-console}
+\include{chapters/appB-settings}
+\include{chapters/appC-hpgl}
+\include{chapters/appD-network}
+
+\backmatter
+\include{chapters/glossary}
+\include{chapters/bibliography}
+
+\end{document}

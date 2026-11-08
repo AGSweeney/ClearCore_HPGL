@@ -1,0 +1,102 @@
+\chapter{Safety}\label{ch:safety}
+
+Read this chapter before you connect power to the machine. The servos of a
+plotter are strong and fast. They can cause injury when they move.
+
+\section{Status of the Software}
+
+\begin{warning}
+ClearHPGL is experimental. It is not certified for production or for
+applications where safety is critical. Do not use it as the only safety
+function of a machine. Install a physical emergency stop that removes power
+from the motors.
+\end{warning}
+
+The emergency stop input of the board (\conn{DI-6}) stops the job and
+disables the motors through the firmware. Firmware can fail. A hardware
+emergency stop in the motor power circuit does not depend on the firmware.
+You must have both.
+
+\section{Motion That You Do Not Expect}
+
+\begin{warning}
+The motors enable automatically when a job arrives (setting
+\key{auto_enable}~1). A job from a computer on the network can start the
+machine at any time. Keep your hands and tools out of the work area when the
+board has power and a computer is connected.
+\end{warning}
+
+\begin{warning}
+The machine has no limit switches and no home position. It goes to the
+coordinates that the job gives, inside the plot area that you set. If the
+plot area is larger than the mechanics, the carriage can hit the end stops.
+Set \key{width_mm} and \key{height_mm} to the travel that is really
+available.
+\end{warning}
+
+\begin{itemize}
+  \item Before you plot, look at the preview in the desktop app. Make sure
+        that the drawing is in the plot area.
+  \item Before you change the steps per revolution, the travel per
+        revolution, or the direction of an axis, do a test move at low
+        speed. Chapter~\ref{ch:setup} gives the procedure.
+  \item Keep the work area clear of persons who do not operate the machine.
+\end{itemize}
+
+\section{Faults and the Emergency Stop}\label{sec:fault-behavior}
+
+The board stops the machine when one of these conditions occurs:
+
+\begin{itemize}
+  \item The emergency stop input \conn{DI-6} opens (with the default setting
+        \key{estop_di6}~1).
+  \item A ClearPath servo reports an alert or a fault.
+  \item The ready signal (HLFB) of a servo is not present when the motors
+        enable (with \key{hlfb_check}~1).
+\end{itemize}
+
+When a fault occurs, the board disables the motors, drops the remainder of
+the job, and latches the fault. The servos stop without control of
+deceleration. The pen can stay on the material. To continue, remove the
+cause, then clear the fault with the \cmd{clear} command or with
+\menu{Clear fault} in the desktop app.
+
+\begin{caution}
+When the motors disable, the axes are free. On a vertical machine or a
+machine on a slope, gravity can move an axis. Make sure that the axes cannot
+fall or move when the motors have no power.
+\end{caution}
+
+\begin{note}
+\notelabel If you do not connect an emergency stop to \conn{DI-6}, set
+\key{estop_di6} to 0. If you do not do this, the board stays in the fault
+state and does not plot. A hardware emergency stop in the motor power circuit
+is still necessary.
+\end{note}
+
+\section{Lasers}
+
+\begin{warning}
+Do not connect a laser to the pen output. The pen output turns on and off
+with the timing of a pen: it has settle delays and no control of power. The
+firmware has no interlocks for an enclosure, a lid, or air assist. A laser on
+this output can cause fire, burns, and damage to the eyes.
+\end{warning}
+
+Laser control is a plan for a future version. It will need control of the
+power by the speed of the path, and interlocks that can stop the beam.
+
+\section{Electrical Safety}
+
+\begin{warning}
+Disconnect all power before you connect or disconnect the motors, the pen
+lift, or the emergency stop. The ClearPath servos and their power supplies
+have dangerous voltages. Obey the instructions of Teknic for the hardware.
+\end{warning}
+
+\begin{caution}
+The board writes its settings to nonvolatile memory. It can do this only
+when the supply voltage is above the undervoltage limit of the ClearCore. Do
+not change settings while the ClearCore gets its power only from the USB
+cable.
+\end{caution}

@@ -1,0 +1,40 @@
+\chapter{Glossary}
+\markboth{Glossary}{Glossary}
+
+\begin{description}[style=nextline,leftmargin=1.2em,font=\sffamily\bfseries\color{navy}]
+  \item[Arc, true] An arc that the motion planner draws as one smooth movement
+        on a circle, not as short straight lines.
+  \item[Chord] A short straight line that replaces a part of an arc.
+  \item[ClearCore] The I/O and motion controller from Teknic that runs the
+        ClearHPGL firmware.
+  \item[ClearPath] A servo motor from Teknic with an integrated drive. The
+        ClearPath-SD model receives step and direction signals.
+  \item[Clip window] A rectangle, set with \cmd{IW}, outside which the board does
+        not draw.
+  \item[Console] The text interface of the board for setup and diagnosis, on
+        USB and on TCP port 9300.
+  \item[DHCP] A network service that gives the board its IP address
+        automatically.
+  \item[DXF] A file format for drawings from AutoCAD and other CAD software.
+  \item[Hard clip] The plot area: the rectangle \key{width_mm} by
+        \key{height_mm} from plotter 0,0. The board does not draw outside it.
+  \item[HLFB] High-Level Feedback. A signal from a ClearPath servo that tells
+        the controller that the servo is ready.
+  \item[HP-GL, HP-GL/2] The plotter languages of HP. HP-GL/2 adds encoded
+        polylines and other instructions.
+  \item[Job] All the data that one source sends for one plot.
+  \item[Job optimizer] The part of the firmware that keeps a full job and
+        plots it in a better order.
+  \item[Nonvolatile memory (NVM)] Memory in the ClearCore that keeps the
+        settings when the power is off.
+  \item[Origin] Plotter 0,0. The position of the pen at power-up, or the
+        position where you used \cmd{origin}.
+  \item[Plot area] See \textit{hard clip}.
+  \item[Plotter unit] The unit of HP-GL coordinates: \SI{0.025}{mm}.
+  \item[Settle time] The time that the board waits after the pen goes down or
+        up, before the axes move.
+  \item[Stroke] A pen-down line or a chain of pen-down lines without a pen-up
+        move.
+  \item[STE] ASD-STE100 Simplified Technical English, the controlled language
+        of this manual.
+\end{description}

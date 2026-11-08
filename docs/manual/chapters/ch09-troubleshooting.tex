@@ -1,0 +1,143 @@
+\chapter{Troubleshooting}\label{ch:trouble}
+
+\section{Read the State of the Board}
+
+The \cmd{status} command shows the state of the machine. The desktop app
+shows the same data in its status bar and its log. This is an example:
+
+\begin{lstlisting}[language=console]
+state=idle enabled=1 x_mm=0.000 y_mm=0.000 pen=up sel_pen=1 queue=0
+planner=0 segments=1767 arcs=550 arc_fallbacks=0 curve_capped=1298
+dropped=0 pages=0 estop=ok fault=none
+\end{lstlisting}
+
+\begin{table}[htbp]
+\centering
+\caption{Fields of \cmd{status}}\label{tab:status}
+\begin{tabularx}{\linewidth}{@{}P{0.24\linewidth}L@{}}
+\toprule
+\textbf{Field} & \textbf{Meaning} \\
+\midrule
+\code{state} & \code{idle}, \code{buffering} (the optimizer keeps a job),
+\code{plotting}, \code{paused}, \code{disabled}, \code{waiting_enable}, or
+\code{fault}. \\
+\code{enabled} & 1 if the motors are enabled. \\
+\code{x_mm}, \code{y_mm}, \code{pen} & The position of the pen and its state. \\
+\code{queue}, \code{planner} & Actions that wait in the board, and segments in the planner. \\
+\code{segments}, \code{arcs} & Lines and true arcs sent to the planner since power-up. \\
+\code{arc_fallbacks} & Arcs that the planner refused and that the board drew as a line. \\
+\code{curve_capped} & Segments that were slower because of a curve. \\
+\code{dropped} & Segments that the board could not plot (for example, zero length). \\
+\code{estop}, \code{fault} & The emergency stop input, and the latched fault. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The second line of \cmd{status} shows the links: the bytes received on each
+link, the source that plots, the IP address, and the counters of HP-GL
+instructions, unknown instructions, and skipped labels.
+
+\section{Faults}
+
+A fault stops the machine (section~\ref{sec:fault-behavior}). The
+\code{fault} field tells you the cause.
+
+\begin{table}[htbp]
+\centering
+\caption{Faults}\label{tab:faults}
+\begin{tabularx}{\linewidth}{@{}P{0.32\linewidth}L@{}}
+\toprule
+\textbf{Fault} & \textbf{Action} \\
+\midrule
+\code{estop (DI-6)} & Close the emergency stop. Examine the wiring of
+\conn{DI-6}. If no emergency stop is connected, set \key{estop_di6}~0. \\
+\code{motor fault on M0 (X)}, \code{motor fault on M1 (Y)} & Examine the
+servo with ClearPath MSP: tracking error, overload, or power. Then type
+\cmd{clear}. \\
+\code{HLFB not asserted} & A servo does not supply its ready signal. Examine
+its power, its cable, and its HLFB setting in MSP. Set \key{hlfb_check}~0 only
+if your servos have no HLFB. \\
+\code{pen Z move timed out} & The pen servo on \conn{M2} did not finish its
+move in 5~s. Examine the servo and \key{z_vel_steps}. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+To clear a fault, remove the cause, then type \cmd{clear} or click
+\menu{Clear fault}. The \cmd{enable} command also clears it.
+
+\section{Diagnostics}
+
+The \cmd{diag} command shows information about the motion. The command
+\cmd{diag reset} sets the timing counters to zero first.
+
+\begin{lstlisting}[language=console]
+bursts=0 (samples asking > 16 steps) excess_carried M0=0 M1=0
+timing: max_irq_off=0 us (QueueLinear/QueueArc) max_update_gap=212 us ...
+step interrupt: max=93 us (arc start)  slow(>150us of 200)=0
+controller x=68900 y=15239  pulses_sent M0=68900 M1=15239
+optimizer: idle  last job: 3 strokes -> 3 paths, pen-up travel 136 -> 127 mm
+\end{lstlisting}
+
+\begin{description}[style=nextline,leftmargin=1.2em,font=\sffamily\bfseries\color{navy}]
+  \item[bursts] Samples that asked for more than 16 steps. It must be 0.
+  \item[step interrupt] The longest time of the step interrupt, and how many
+        times it used more than \SI{150}{\micro s} of its \SI{200}{\micro s}
+        period. If the interrupt is too long, a motor can jump. A value near
+        \SI{200}{\micro s} is a problem.
+  \item[controller, pulses\_sent] The position of the planner and the pulses
+        sent to each motor. They must be the same.
+  \item[optimizer] The last job: strokes, paths, and the pen-up travel before
+        and after the optimizer.
+\end{description}
+
+\section{Problems and Remedies}
+
+\begin{longtable}{@{}P{0.33\linewidth}P{0.62\linewidth}@{}}
+\caption{Problems and remedies}\label{tab:problems}\\
+\toprule
+\textbf{Problem} & \textbf{Possible cause and remedy} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Problem} & \textbf{Possible cause and remedy} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Nothing plots from the USB port & The console is open: type \cmd{exit}.
+The optimizer keeps the job until the port is quiet for 2~s: wait. A fault
+is latched: read \cmd{status}. \\
+The state stays \code{waiting_enable} & \key{auto_enable} is 0. Type
+\cmd{enable}, or set \key{auto_enable}~1. \\
+The motors do not enable & The emergency stop is open, or HLFB is missing.
+Read the fault. \\
+The board is not found on the network & The board uses 192.168.0.110 if DHCP
+fails. Make sure that the computer is on the same subnet. Type \cmd{status}
+on the USB console to read the \code{ip} field. \\
+A terminal cannot connect to port 9300 & The console accepts one client. Close
+the desktop app or the other terminal. \\
+The plot has the wrong size & Examine \key{steps_rev_x}, \key{mm_rev_x},
+\key{steps_rev_y}, and \key{mm_rev_y}. For a DXF, examine its units
+(\code{\$INSUNITS}). \\
+The plot is mirrored & Set \key{dir_x} or \key{dir_y} to -1. \\
+The plot is at the wrong position & Set the origin again. For an AutoCAD
+DraftMaster driver, examine \key{ident} and the paper size. \\
+Parts of the drawing are missing & The drawing is outside the plot area.
+Text (\cmd{LB}) is not drawn: send text as lines. \\
+The pen moves before it is down & Increase \key{pen_down_ms}. \\
+Corners are rough, or the machine shakes & Decrease \key{accel_mm_s2} or
+\key{corner_mm_s}. \\
+The machine is slow on small curves & This is correct: the speed on a curve is
+limited by \key{accel_mm_s2}. Increase it if the machine can accelerate more. \\
+Arcs look like polygons & The job came through the optimizer, or the axes
+have different scales. Read the causes in chapter~\ref{ch:jobs}. \\
+A motor jumps & Type \cmd{diag}. Examine \code{step interrupt} and
+\code{pulses_sent}. Report the values with the job that caused the jump. \\
+\code{error: disable motors first} & The setting needs the motors disabled.
+Type \cmd{disable}. \\
+\code{error: a job is running} & The setting can change only between jobs.
+Wait until the job ends. \\
+\code{applied but NVM write failed} & The supply voltage is too low to write
+the memory. Connect the 24~V supply and set the value again. \\
+\end{longtable}

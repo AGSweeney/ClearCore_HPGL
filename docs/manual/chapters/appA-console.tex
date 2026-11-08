@@ -1,0 +1,74 @@
+\chapter{Console Commands}\label{app:console}
+
+The console is on the USB port (type \cmd{menu} on a line by itself) and on
+TCP port 9300. Each command ends with a line that starts with \code{ok} or
+\code{error:}. When the console opens, it shows the firmware version, the
+model name, the IP address, the active links, and the source of the
+settings.
+
+\begin{longtable}{@{}P{0.27\linewidth}P{0.68\linewidth}@{}}
+\caption{Console commands}\label{tab:console}\\
+\toprule
+\textbf{Command} & \textbf{Function} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Command} & \textbf{Function} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\cmd{help}, \cmd{menu} & Show the list of commands. \\
+\cmd{status} & Show the state, the position in mm, the pen, the queue depth,
+the counters, and the data of the links (table~\ref{tab:status}). \\
+\cmd{config} & Show all settings with their values, their descriptions, and
+when they take effect. \\
+\cmd{set} \textit{key value} & Make sure that the value is correct, apply it,
+and save it in the nonvolatile memory. Appendix~\ref{app:settings} lists the
+keys. \\
+\cmd{defaults} & Set all settings to the factory values. The motors must be
+disabled. \\
+\cmd{enable} & Enable the motors. This also clears a latched fault. With
+\key{hlfb_check}~1, the board waits for HLFB from all servos. \\
+\cmd{disable} & Disable the motors. A job that is in the queue is dropped. \\
+\cmd{abort} & Stop now, drop the job, and raise the pen. \\
+\cmd{pause} & Stop at the end of the segments in the queue, and raise the pen. \\
+\cmd{resume} & Lower the pen and continue after \cmd{pause}. \\
+\cmd{origin} & The present position becomes plotter 0,0. No job can be
+plotting. \\
+\cmd{goto} \textit{x\_mm y\_mm} & Move to the position with the pen up. No job
+can be plotting. The position stays in the plot area. \\
+\cmd{pen up}, \cmd{pen down} & Raise or lower the pen to test it. No job can
+be plotting. \\
+\cmd{clear} & Clear a latched fault. Remove the cause first. \\
+\cmd{diag} & Show the motion diagnostics, the last job of the optimizer, and
+the data of the USB link. \\
+\cmd{diag reset} & Set the timing counters to zero, then show the diagnostics. \\
+\cmd{tel} \textit{ms} & TCP console only. Send a line \code{TEL ms= x= y= pen=
+state= queue=} every \textit{ms} milliseconds (10 or more; 0 stops it). A line
+is sent only when the TCP buffer has space, so a slow client cannot stop the
+motion. The desktop app uses 25~ms. \\
+\cmd{restart} & Restart the board. \\
+\cmd{version} & Show the name and the version of the firmware. \\
+\cmd{exit}, \cmd{quit}, \cmd{q} & Close the console. On USB, the port goes back
+to HP-GL. \\
+\end{longtable}
+
+\section*{Error Messages}
+
+\begin{table}[htbp]
+\centering
+\caption{Common console errors}\label{tab:console-errors}
+\begin{tabularx}{\linewidth}{@{}P{0.45\linewidth}L@{}}
+\toprule
+\textbf{Message} & \textbf{Meaning} \\
+\midrule
+\code{unknown key (try: config)} & The setting name is not correct. \\
+\code{disable motors first} & The setting needs the motors disabled. \\
+\code{a job is running; change it when the plotter is idle} & The setting can change only between jobs. \\
+\code{applied but NVM write failed} & The board uses the value but could not save it. The supply voltage is too low. \\
+\code{plotter busy} & The command needs the machine to be idle. \\
+\code{unknown command (try: help)} & The command name is not correct. \\
+\bottomrule
+\end{tabularx}
+\end{table}

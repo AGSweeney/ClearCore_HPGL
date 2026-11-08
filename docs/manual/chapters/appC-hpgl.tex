@@ -1,0 +1,149 @@
+\chapter{HP-GL Support}\label{app:hpgl}
+
+The board operates as an HP-GL pen plotter of the HP 7475A class. It also
+reads the HP-GL/2 instructions that drivers usually send. The HP-GL/2
+reference guide gives the full definition of each
+instruction.\footnote{Hewlett-Packard Company, \textit{The HP-GL/2 and HP RTL
+Reference Guide: A Handbook for Program Developers}, 3rd ed. (Reading, MA:
+Addison-Wesley, 1997).}
+
+\section{Syntax}
+
+\begin{itemize}
+  \item Mnemonics are not case sensitive.
+  \item Commas or spaces separate parameters.
+  \item An instruction ends with \code{;} or with the next mnemonic, for
+        example \code{PA10,10PD20,20}.
+  \item Decimal values and signs are correct in all parameters.
+\end{itemize}
+
+\section{Instructions}
+
+\begin{longtable}{@{}P{0.16\linewidth}P{0.34\linewidth}P{0.45\linewidth}@{}}
+\caption{HP-GL instructions}\label{tab:hpgl}\\
+\toprule
+\textbf{Group} & \textbf{Instructions} & \textbf{Notes} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Group} & \textbf{Instructions} & \textbf{Notes} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Setup & \cmd{IN} \cmd{DF} \cmd{IP} \cmd{IR} \cmd{SC} (types 0, 1, and 2) \cmd{IW} \cmd{RO} &
+\cmd{IN} raises the pen, sets P1 and P2 to the plot area, and clears errors. \\
+Pen and motion & \cmd{PU} \cmd{PD} \cmd{PA} \cmd{PR} \cmd{PE} &
+\cmd{PE} is the HP-GL/2 encoded polyline, with all its flags (base 64, 7-bit,
+fractional bits, absolute, pen up, and pen select). \\
+Pen and speed & \cmd{SP} \cmd{VS} &
+One pen. \cmd{SP0} raises the pen. \cmd{VS} is in cm/s, up to \key{max_mm_s}. \\
+Arcs and shapes & \cmd{AA} \cmd{AR} \cmd{CI} \cmd{CT} \cmd{EA} \cmd{ER}
+\cmd{EW} \cmd{RA} \cmd{RR} \cmd{WG} \cmd{XT} \cmd{YT} \cmd{TL} &
+Pen-down arcs are true arcs. \cmd{CI} and \cmd{EW} go back to the center.
+\cmd{RA}, \cmd{RR}, and \cmd{WG} draw only the outline. \\
+Page & \cmd{PG} \cmd{NR} \cmd{AF} \cmd{AH} \cmd{FR} & Raise the pen and count a page. \\
+Output & \cmd{OI} \cmd{OS} \cmd{OE} \cmd{OA} \cmd{OC} \cmd{OP} \cmd{OH}
+\cmd{OW} \cmd{OF} \cmd{OO} \cmd{OT} \cmd{OD} \cmd{OG} \cmd{OL} &
+\cmd{OI} replies with \key{ident}. \cmd{OS} clears bits 8 and 2 after it is
+read. \cmd{OE} clears the error. \\
+Text & \cmd{LB} \cmd{DT} & Not drawn. The board reads the text up to the
+terminator and counts it. \\
+No effect & \cmd{LT} \cmd{PT} \cmd{FT} \cmd{LA} \cmd{PW} \cmd{WU} \cmd{NP}
+\cmd{PC} \cmd{BP} \cmd{PS} \cmd{QL} \cmd{RP} \cmd{MC} \cmd{CO} \cmd{MG}
+\cmd{SI} \cmd{SR} \cmd{DI} \cmd{DR} \cmd{CS} \cmd{CA} \cmd{SS} \cmd{SA}
+\cmd{ES} \cmd{LO} \cmd{CP} \cmd{SM}, and others &
+Accepted and ignored. All lines are solid. Strings in quotes are skipped. \\
+\end{longtable}
+
+An instruction that is not in table~\ref{tab:hpgl} sets error 1 and is
+skipped. The board removes \code{@PJL} lines and the PCL and PJL escape
+sequences that Windows drivers send.
+
+\section{Errors and Status}
+
+\begin{table}[htbp]
+\centering
+\caption{Error codes (\cmd{OE})}\label{tab:oe}
+\begin{tabularx}{\linewidth}{@{}P{0.12\linewidth}L@{}}
+\toprule
+\textbf{Code} & \textbf{Meaning} \\
+\midrule
+0 & No error. \\
+1 & Instruction not known. \\
+2 & Wrong number of parameters. \\
+3 & Parameter not correct (for example \code{RO45}, or \cmd{SC} with a range of zero). \\
+6 & Position overflow. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Status bits (\cmd{OS})}\label{tab:os}
+\begin{tabularx}{\linewidth}{@{}P{0.1\linewidth}P{0.1\linewidth}L@{}}
+\toprule
+\textbf{Bit} & \textbf{Value} & \textbf{Meaning} \\
+\midrule
+0 & 1 & Pen down. \\
+1 & 2 & P1 or P2 changed (cleared by \cmd{OS} or \cmd{OP}). \\
+3 & 8 & Initialized (set by \cmd{IN}, cleared by \cmd{OS}). \\
+4 & 16 & Ready. \\
+5 & 32 & Error (cleared by \cmd{OE}). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+At power-up, \cmd{OS} replies 24.
+
+\section{Device Control (ESC~.)}
+
+The board answers these sequences immediately, before the data in its
+buffer, as an HP 7475A does. They operate on all links. The reply ends with a
+carriage return; \code{ESC.M} can change this.
+
+\begin{longtable}{@{}P{0.3\linewidth}P{0.65\linewidth}@{}}
+\caption{Device-control sequences}\label{tab:esc}\\
+\toprule
+\textbf{Sequence} & \textbf{Function or reply} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Sequence} & \textbf{Function or reply} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\code{ESC.(} \code{ESC.Y} & Plotter on. \\
+\code{ESC.)} \code{ESC.Z} & Plotter off. The board discards data until the plotter is on. \\
+\code{ESC.B} & Free bytes in the buffer. \\
+\code{ESC.L} & Size of the buffer. \\
+\code{ESC.O} & 8 if the buffer is empty, or 0. \\
+\code{ESC.E} & Extended error, then clear it: 11 bad byte after \code{ESC.}, 12 bad
+parameter, 14 too many parameters, 16 buffer overflow. \\
+\code{ESC.K} & Stop the graphics: drop the buffered data, stop the motion, and raise the pen. \\
+\code{ESC.J} & Stop device control (cancel an ACK that waits). \\
+\code{ESC.R} & Reset the handshake and the output settings. \\
+\code{ESC.H}, \code{ESC.I} & ENQ/ACK handshake. \\
+\code{ESC.N} & Enable XON/XOFF with the given XOFF character. \\
+\code{ESC.M} & Set the output terminator. \\
+\code{ESC.@} \code{ESC.S} \code{ESC.T} \code{ESC.U} \code{ESC.P} & Accepted, no effect. \\
+\end{longtable}
+
+\section{Flow Control}
+
+\begin{table}[htbp]
+\centering
+\caption{Flow control on each link}\label{tab:flow}
+\begin{tabularx}{\linewidth}{@{}P{0.16\linewidth}L@{}}
+\toprule
+\textbf{Link} & \textbf{Mechanism} \\
+\midrule
+TCP 9100 & The board stops reading when its 8~KB buffer is full. \\
+USB & The board stops reading when its 4~KB buffer is full. \\
+COM & \key{com_handshake}: 1 XON/XOFF (XOFF at less than 128 bytes free, XON
+above half), 2 RTS/CTS, 0 none. The buffer is 1024 bytes. ENQ/ACK and
+\code{ESC.B} operate on all links. \\
+\bottomrule
+\end{tabularx}
+\end{table}

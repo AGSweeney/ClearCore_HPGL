@@ -1,0 +1,157 @@
+\chapter{How the Board Processes a Job}\label{ch:jobs}
+
+This chapter tells you what the board does with a job. Use it to understand
+the result of a plot, and to set the board for your work.
+
+\section{One Source at a Time}
+
+The board receives HP-GL on three links: USB, COM, and TCP port 9100. One
+source plots at a time. A source keeps the plotter until its buffer is empty
+and the job has ended:
+
+\begin{itemize}
+  \item On TCP, the job ends when the connection closes.
+  \item On USB and COM, the job ends when the source is quiet for 2~s.
+\end{itemize}
+
+Then the next source that has data starts. The other sources wait: TCP and
+USB stop at the full buffer, and COM gets XOFF. The board sends the replies
+to output instructions (for example \cmd{OI} or \cmd{OS}) to the source that
+plots.
+
+If the last instruction of a job has no \code{;}, the board ends it when the
+job ends. For example, \code{PU0,0} at the end of a file operates.
+
+\section{The Job Optimizer}\label{sec:optimizer}
+
+CAD drivers often send a drawing in a bad order: an outline in many short
+parts, or holes after the outline. The \term{job optimizer} of the board
+keeps a full job and then plots it in a better order:
+
+\begin{enumerate}
+  \item It joins strokes whose ends touch into longer paths.
+  \item It draws everything inside a closed contour before the contour. Thus
+        outlines come last, and a cutter does not free a part before its
+        holes are cut.
+  \item From the shapes that are ready, it draws the nearest next. It starts
+        a closed contour at its nearest vertex, and an open path at its
+        nearer end.
+\end{enumerate}
+
+On the AutoCAD parts that were tested, the optimizer decreased the pen-up
+travel by 45\%--65\%.
+
+\subsection{Which Sources the Optimizer Changes}
+
+The setting \key{optimize} selects the sources. Add the values of the
+sources that you want:
+
+\begin{table}[htbp]
+\centering
+\caption{Values of \key{optimize}}\label{tab:optimize}
+\begin{tabularx}{\linewidth}{@{}P{0.12\linewidth}L@{}}
+\toprule
+\textbf{Value} & \textbf{Source} \\
+\midrule
+1 & USB \\
+2 & COM-0 or COM-1 \\
+4 & Network (TCP 9100) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The default is 3 (USB and COM), because CAD drivers use these links. The
+desktop app orders its own jobs, so the board does not change network jobs.
+
+\subsection{What the Optimizer Changes}
+
+\begin{itemize}
+  \item The plot starts only when the job ends. While the board keeps the
+        job, \cmd{status} shows \code{state=buffering}.
+  \item A pen change or a speed change divides a job into groups. The groups
+        keep their sequence.
+  \item A page break (\cmd{PG}) ends a page. The board plots each page when
+        it ends.
+  \item A page can have 8000 points and 500 strokes. A larger job plots in
+        the sequence that it arrives, and the remainder streams through.
+  \item Arcs in a job that the optimizer changes are drawn as short lines
+        (chords).
+\end{itemize}
+
+The \cmd{diag} command shows the last job: the number of strokes and paths,
+and the pen-up travel before and after the optimizer.
+
+\section{Arcs and Circles}
+
+The HP-GL instructions for arcs and circles are \cmd{AA}, \cmd{AR},
+\cmd{CI}, \cmd{EW}, and \cmd{WG}. With the pen down, the board draws each one
+as a \term{true arc}: one smooth movement on the circle. The speed on an arc
+is limited, so that the acceleration toward the center stays in
+\key{accel_mm_s2}. The \cmd{status} command counts the arcs (\code{arcs=}).
+
+The board draws an arc as \term{chords} (short straight lines) when:
+
+\begin{itemize}
+  \item the optimizer changes the job (\key{optimize}),
+  \item the job scales X and Y differently, so the circle is an ellipse,
+  \item the arc goes out of the clip window or the plot area,
+  \item X and Y have different steps per millimeter, or
+  \item the radius is less than a few motor steps.
+\end{itemize}
+
+Chords are 5° by default. The job can set a different angle with the chord
+parameter, or set a maximum deviation with \cmd{CT1}. The minimum is 0.5°.
+
+\section{Speed}
+
+\begin{itemize}
+  \item With the pen up, the speed is \key{travel_mm_s}.
+  \item With the pen down, the speed is \key{draw_mm_s}. With \key{job_speed}~1,
+        the \cmd{VS} instruction of a job sets it (in cm/s), up to \key{max_mm_s}.
+        \cmd{VS} without a value sets it back to \key{draw_mm_s}.
+  \item On curves, the board decreases the speed. The acceleration toward the
+        center of the curve stays in \key{accel_mm_s2}. This applies to true
+        arcs and to curves made of short lines.
+  \item At a corner, the speed of each axis changes by no more than
+        \key{corner_mm_s}.
+\end{itemize}
+
+The planner looks ahead along the segments in its queue and always plans to
+stop at the last one. If the computer sends data too slowly, the machine
+slows down. It does not lose its position.
+
+\section{Coordinates and Clipping}
+
+\begin{itemize}
+  \item One plotter unit is \SI{0.025}{mm} (40 units per mm).
+  \item The plot area is \key{width_mm} by \key{height_mm}, from plotter 0,0.
+  \item The board moves the pen up to the edge of the plot area, not past it.
+  \item A pen-down line is clipped to the clip window (\cmd{IW}) and to the
+        plot area. The pen goes up where a line leaves the window and down
+        where it comes back.
+  \item A point that is less than half a plotter unit (\SI{0.0125}{mm})
+        outside the plot area is on the edge. A drawing that touches the edge
+        of the plot area plots without a pen lift.
+  \item \cmd{RO} rotates the coordinates by 90°, 180°, or 270°.
+\end{itemize}
+
+\section{Pen Changes}
+
+The board raises and lowers the pen only when the axes are stopped. After a
+pen change, it waits for the settle time (\key{pen_down_ms} or
+\key{pen_up_ms}). Between two pen changes, the segments flow through the
+planner without a stop.
+
+\section{Abort a Job}
+
+These actions stop a job, drop the data that the board has kept, and raise
+the pen:
+
+\begin{itemize}
+  \item The console command \cmd{abort}, or \menu{Abort} in the app.
+  \item The device-control sequence \code{ESC.K} from the source that plots.
+\end{itemize}
+
+After a fault, the board also drops the job. A TCP job is closed. A serial
+job is discarded until its source is quiet for 2~s, so the remainder of the
+job does not plot.

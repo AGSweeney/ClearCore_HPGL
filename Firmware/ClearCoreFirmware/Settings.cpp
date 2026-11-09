@@ -2,6 +2,8 @@
 
 #include "Settings.h"
 
+#include "Switches.h"
+
 #include "ClearCore.h"
 #include "HpglChannel.h"
 #include "NvmManager.h"
@@ -13,7 +15,7 @@
 /* User-page blob. Magic differs from ClearAI ('CAIC') and ClearCoreROS ('CROS')
  * so a blob left by either is ignored instead of misread. */
 static const uint32_t CHPGL_NVM_MAGIC = 0x47504843u; /* 'CHPG' */
-static const uint16_t CHPGL_NVM_VERSION = 5;
+static const uint16_t CHPGL_NVM_VERSION = 6;
 /* 20-tooth GT2 pulley: 40 mm of belt per revolution. */
 static const float kDefaultPulleyDiaMm = 12.7324f;
 
@@ -37,6 +39,8 @@ static uint32_t Checksum(const PlotterSettings *s) {
     }
     return h;
 }
+
+static void DefaultSwitches(PlotterSettings *s);
 
 void SettingsDefaults() {
     memset(&g_settings, 0, sizeof(g_settings));
@@ -72,6 +76,7 @@ void SettingsDefaults() {
     g_settings.swapXy = 0;
     g_settings.motorMaxMmS = 0.0f;
     g_settings.pulleyDiaMm = kDefaultPulleyDiaMm;
+    DefaultSwitches(&g_settings);
     g_settings.hlfbCheck = 1;
     g_settings.comPort = 0;
     g_settings.comBaud = 9600;
@@ -146,6 +151,7 @@ void SettingsLoad() {
         offsetof(PlotterSettings, jobSpeed),  /* version 2 */
         offsetof(PlotterSettings, kinematics),  /* version 3 */
         offsetof(PlotterSettings, pulleyDiaMm),  /* version 4 */
+        offsetof(PlotterSettings, swPin),  /* version 5 */
     };
     if (s.magic == CHPGL_NVM_MAGIC && s.version >= 1 && s.version < CHPGL_NVM_VERSION &&
         s.size == kFieldsEnd[s.version] + 4) {
@@ -169,7 +175,10 @@ void SettingsLoad() {
                 s.swapXy = 0;
                 s.motorMaxMmS = 0.0f;
             }
-            s.pulleyDiaMm = kDefaultPulleyDiaMm;
+            if (s.version < 5) {
+                s.pulleyDiaMm = kDefaultPulleyDiaMm;
+            }
+            DefaultSwitches(&s);
             s.version = CHPGL_NVM_VERSION;
             s.size = sizeof(PlotterSettings);
             s.checksum = Checksum(&s);
@@ -223,6 +232,54 @@ bool SettingsFromNvm() {
     return g_fromNvm;
 }
 
+static void DefaultSwitches(PlotterSettings *s) {
+    for (int i = 0; i < 6; i++) {
+        s->swPin[i] = -1;
+    }
+    s->swOpen = 0;
+    s->homeMode = 0;
+    s->homeRequired = 0;
+    s->homeOrder = 0;
+    for (int a = 0; a < 2; a++) {
+        s->homeDir[a] = -1;
+        s->homeFast[a] = 20.0f;
+        s->homeSlow[a] = 2.0f;
+        s->homeBack[a] = 3.0f;
+        s->homeAt[a] = 0.0f;
+        s->homeTravel[a] = 0.0f;
+    }
+}
+
+static const char *CheckSwitchInputs() {
+    for (int i = 0; i < 6; i++) {
+        const int code = g_settings.swPin[i];
+        if (code < 0) {
+            continue;
+        }
+        if (!InputCodeValid(code)) {
+            return "not an input a switch can use";
+        }
+        if (g_settings.penMode == PEN_MODE_OUTPUT && code == g_settings.penIo) {
+            return "that input is the pen's output (pen_io)";
+        }
+        for (int j = i + 1; j < 6; j++) {
+            if (g_settings.swPin[j] != code) {
+                continue;
+            }
+            /* The same axis, one of them its home switch: homing on a limit. */
+            const bool sameAxis = SwitchAxis(i) == SwitchAxis(j);
+            const bool oneHome = SwitchIsHome(i) || SwitchIsHome(j);
+            if (!(sameAxis && oneHome)) {
+                return "that input already has a switch";
+            }
+            if (((g_settings.swOpen >> i) & 1u) != ((g_settings.swOpen >> j) & 1u)) {
+                return "a home switch on a limit's input has the limit's contact (switch_open)";
+            }
+        }
+    }
+    return nullptr;
+}
+
 double SettingsStepsPerMm(uint8_t axis) {
     if (axis > 1) {
         return 1.0;
@@ -243,7 +300,7 @@ double SettingsStepsPerMm(uint8_t axis) {
 /* Key table                                                                  */
 /* ------------------------------------------------------------------------- */
 
-enum KeyType { K_U8, K_I8, K_U16, K_U32, K_I32, K_F32, K_IP, K_STR };
+enum KeyType { K_U8, K_I8, K_U16, K_U32, K_I32, K_F32, K_IP, K_STR, K_PIN };
 enum KeyFlags {
     KF_LIVE = 0,
     KF_DISABLED = 1,  /* only while motors are disabled */
@@ -306,6 +363,30 @@ static const KeyDef kKeys[] = {
     {"netmask", K_IP, OFS(netmask), 0, 0, KF_RESTART, "static netmask"},
     {"gateway", K_IP, OFS(gateway), 0, 0, KF_RESTART, "static gateway"},
     {"ident", K_STR, OFS(ident), 0, 0, KF_LIVE, "OI reply; 758x/759x (DraftMaster) put 0,0 at bed centre"},
+    /* Limit and home switches: the board's input for each, by name (DI-7, DI-8, A-9..A-12, IO-0..IO-5)
+     * or none. Changed between jobs. */
+    {"x_limit_plus", K_PIN, OFS(swPin[0]), -1, 12, KF_IDLE, "X+ limit input (none, DI-7, DI-8, A-9..A-12, IO-0..IO-5)"},
+    {"x_limit_minus", K_PIN, OFS(swPin[1]), -1, 12, KF_IDLE, "X- limit input"},
+    {"x_home", K_PIN, OFS(swPin[2]), -1, 12, KF_IDLE, "X home switch input (may be a limit's input)"},
+    {"y_limit_plus", K_PIN, OFS(swPin[3]), -1, 12, KF_IDLE, "Y+ limit input"},
+    {"y_limit_minus", K_PIN, OFS(swPin[4]), -1, 12, KF_IDLE, "Y- limit input"},
+    {"y_home", K_PIN, OFS(swPin[5]), -1, 12, KF_IDLE, "Y home switch input (may be a limit's input)"},
+    {"switch_open", K_U8, OFS(swOpen), 0, 63, KF_IDLE, "normally open switches: 1 X+, 2 X-, 4 X home, 8 Y+, 16 Y-, 32 Y home"},
+    {"home_mode", K_U8, OFS(homeMode), 0, 2, KF_IDLE, "homing: 0 off, 1 on the home switches, 2 ClearPath hard stop"},
+    {"home_required", K_U8, OFS(homeRequired), 0, 1, KF_LIVE, "1 = home before plotting (runs by itself)"},
+    {"home_order", K_U8, OFS(homeOrder), 0, 1, KF_LIVE, "0 = X then Y, 1 = Y then X"},
+    {"x_home_dir", K_I8, OFS(homeDir[0]), -1, 1, KF_IDLE, "X homing direction: -1 or 1"},
+    {"x_home_fast", K_F32, OFS(homeFast[0]), 0.1, 1000, KF_IDLE, "X homing search speed (mm/s)"},
+    {"x_home_slow", K_F32, OFS(homeSlow[0]), 0.05, 100, KF_IDLE, "X homing latch speed (mm/s)"},
+    {"x_home_back", K_F32, OFS(homeBack[0]), 0.1, 100, KF_IDLE, "X back-off from the switch (mm)"},
+    {"x_home_at", K_F32, OFS(homeAt[0]), -100000, 100000, KF_IDLE, "X position at the home switch (mm)"},
+    {"x_home_travel", K_F32, OFS(homeTravel[0]), 0, 100000, KF_IDLE, "X longest search (mm), 0 = plot width"},
+    {"y_home_dir", K_I8, OFS(homeDir[1]), -1, 1, KF_IDLE, "Y homing direction: -1 or 1"},
+    {"y_home_fast", K_F32, OFS(homeFast[1]), 0.1, 1000, KF_IDLE, "Y homing search speed (mm/s)"},
+    {"y_home_slow", K_F32, OFS(homeSlow[1]), 0.05, 100, KF_IDLE, "Y homing latch speed (mm/s)"},
+    {"y_home_back", K_F32, OFS(homeBack[1]), 0.1, 100, KF_IDLE, "Y back-off from the switch (mm)"},
+    {"y_home_at", K_F32, OFS(homeAt[1]), -100000, 100000, KF_IDLE, "Y position at the home switch (mm)"},
+    {"y_home_travel", K_F32, OFS(homeTravel[1]), 0, 100000, KF_IDLE, "Y longest search (mm), 0 = plot height"},
 };
 
 static const uint16_t kKeyCount = (uint16_t)(sizeof(kKeys) / sizeof(kKeys[0]));
@@ -365,6 +446,9 @@ static void FormatValue(const KeyDef &k, char *buf, size_t len) {
         case K_STR:
             snprintf(buf, len, "%s", (const char *)base);
             break;
+        case K_PIN:
+            snprintf(buf, len, "%s", InputName(*(const int8_t *)base));
+            break;
         default:
             buf[0] = '\0';
             break;
@@ -417,6 +501,12 @@ const char *SettingsSet(const char *key, const char *value, bool motorsEnabled, 
             return "expected a.b.c.d";
         }
         memcpy(base, ip, 4);
+    } else if (k->type == K_PIN) {
+        const int code = ParseInputName(value);
+        if (code == -2) {
+            return "expected an input: none, DI-7, DI-8, A-9..A-12, IO-0..IO-5";
+        }
+        *(int8_t *)base = (int8_t)code;
     } else if (k->type == K_STR) {
         const size_t cap = sizeof(g_settings.ident);
         if (strlen(value) >= cap) {
@@ -462,6 +552,16 @@ const char *SettingsSet(const char *key, const char *value, bool motorsEnabled, 
             default:
                 break;
         }
+    }
+    /* Switch inputs: one job each (a home switch may share a limit's input on its axis), never the
+     * pen's output. */
+    if (const char *err = CheckSwitchInputs()) {
+        g_settings = before;
+        return err;
+    }
+    if (g_settings.homeMode == 2 && g_settings.kinematics == 1) {
+        g_settings = before;
+        return "ClearPath hard-stop homing homes motors, not axes: not with CoreXY (use home_mode 1)";
     }
     /* CoreXY: one Cartesian step is one step of belt, so both motors need the same scale. They
      * share pulley_dia_mm, so that means the same steps per revolution. */

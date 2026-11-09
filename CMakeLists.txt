@@ -40,6 +40,8 @@ qt_add_executable(ClearHPGL WIN32
     src/ClearPathLink.cpp
     src/ScopeWindow.h
     src/ScopeWindow.cpp
+    src/SwitchWizard.h
+    src/SwitchWizard.cpp
     resources/app_resources.qrc
     # The firmware's HP-GL interpreter (portable C++), so the preview matches the plotter.
     Firmware/ClearCoreFirmware/Hpgl.h
@@ -105,6 +107,7 @@ if (CLEARHPGL_BUILD_TESTS)
         src/FirmwareDialog.cpp src/FirmwareDialog.h
         src/ClearPathLink.cpp src/ClearPathLink.h
         src/ScopeWindow.cpp src/ScopeWindow.h
+        src/SwitchWizard.cpp src/SwitchWizard.h
         resources/app_resources.qrc
         Firmware/ClearCoreFirmware/Hpgl.cpp
         Firmware/ClearCoreFirmware/HpglChannel.cpp

@@ -304,6 +304,12 @@
     <Compile Include="Settings.h">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="Switches.cpp">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="Switches.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="Transport.cpp">
       <SubType>compile</SubType>
     </Compile>

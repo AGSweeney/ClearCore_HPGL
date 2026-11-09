@@ -106,6 +106,43 @@ jobs), \textbf{disabled} (with the motors disabled), or \textbf{restart}
 \key{ident} & \code{7475A} & text & live & Reply to \cmd{OI}. \code{758x} and \code{759x} (DraftMaster) put plotter 0,0 at the center of the bed. \\
 \end{longtable}
 
+\section{Limits and Homing}
+
+Chapter~\ref{ch:limits} tells how to use these settings. An input is
+\code{none}, \code{DI-7}, \code{DI-8}, \code{A-9} to \code{A-12}, or
+\code{IO-0} to \code{IO-5}. The \key{x_home_*} settings have \key{y_home_*}
+settings for Y with the same defaults.
+
+\begin{longtable}{@{}P{0.2\linewidth}P{0.11\linewidth}P{0.16\linewidth}P{0.1\linewidth}P{0.33\linewidth}@{}}
+\caption{Limit and homing settings}\label{tab:set-switches}\\
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Range} & \textbf{When} & \textbf{Function} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Range} & \textbf{When} & \textbf{Function} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\key{x_limit_plus} & none & input & idle & X+ limit switch. \\
+\key{x_limit_minus} & none & input & idle & X- limit switch. \\
+\key{x_home} & none & input & idle & X home switch. It can be the input of an X limit. \\
+\key{y_limit_plus} & none & input & idle & Y+ limit switch. \\
+\key{y_limit_minus} & none & input & idle & Y- limit switch. \\
+\key{y_home} & none & input & idle & Y home switch. It can be the input of a Y limit. \\
+\key{switch_open} & 0 & 0--63 & idle & Normally open switches: 1 X+, 2 X-, 4 X home, 8 Y+, 16 Y-, 32 Y home. Add the values. \\
+\key{home_mode} & 0 & 0--2 & idle & 0: no homing. 1: home on the home switches. 2: ClearPath hard-stop homing (Cartesian). \\
+\key{home_required} & 0 & 0 or 1 & live & 1: home before a job, if the axes are not homed. \\
+\key{home_order} & 0 & 0 or 1 & live & 0: X, then Y. 1: Y, then X. \\
+\key{x_home_dir} & -1 & -1 or 1 & idle & Direction toward the X home switch. \\
+\key{x_home_fast} & 20 & 0.1--1000 & idle & Search speed, mm/s. \\
+\key{x_home_slow} & 2 & 0.05--100 & idle & Latch speed, mm/s. \\
+\key{x_home_back} & 3 & 0.1--100 & idle & Back-off after the switch releases, mm. \\
+\key{x_home_at} & 0 & $\pm$100,000 & idle & X position at the switch, mm. \\
+\key{x_home_travel} & 0 & 0--100,000 & idle & Longest search, mm. 0: 1.2 times the plot area plus 20~mm. \\
+\end{longtable}
+
 \section{Serial Port and Network}
 
 \begin{longtable}{@{}P{0.2\linewidth}P{0.11\linewidth}P{0.16\linewidth}P{0.1\linewidth}P{0.33\linewidth}@{}}

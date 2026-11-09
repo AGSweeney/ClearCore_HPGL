@@ -52,8 +52,19 @@ if (MSVC)
     target_compile_definitions(test_corexy PRIVATE _USE_MATH_DEFINES)
 endif()
 
+# Limit and home switches and the homing sequence (Switches.cpp), against simulated motion
+add_executable(test_switches
+    test_switches.cpp
+    ${FW_DIR}/Switches.cpp
+)
+target_include_directories(test_switches PRIVATE ${FW_DIR})
+if (MSVC)
+    target_compile_options(test_switches PRIVATE /W4 /D_CRT_SECURE_NO_WARNINGS)
+endif()
+
 enable_testing()
 add_test(NAME test_hpgl COMMAND test_hpgl)
 add_test(NAME test_interp COMMAND test_interp)
 add_test(NAME test_arc COMMAND test_arc)
 add_test(NAME test_corexy COMMAND test_corexy)
+add_test(NAME test_switches COMMAND test_switches)

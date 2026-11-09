@@ -285,7 +285,9 @@ void PlotterLink::handleConsoleLine(const QString &line) {
         parseTelemetryLine(line);  /* pushed by the board; may arrive inside a command reply */
         return;
     }
-    if (line.contains(QLatin1String("state=")) || line.contains(QLatin1String("source="))) {
+    /* Only the two lines of "status": swinfo's "home mode=1 state=idle ..." is not one (it has no
+     * enabled= and would read as motors off at 0,0). */
+    if (line.startsWith(QLatin1String("state=")) || line.startsWith(QLatin1String("source="))) {
         parseStatusLine(line);
     }
     if (!m_cmdActive) {
@@ -357,6 +359,12 @@ void PlotterLink::parseStatusLine(const QString &line) {
         m_status.penDown = TokenValue(line, QStringLiteral("pen")) == QLatin1String("down");
         m_status.queue = TokenValue(line, QStringLiteral("queue")).toInt();
         m_status.estop = TokenValue(line, QStringLiteral("estop"));
+        bool okIn = false;
+        const int inputs = TokenValue(line, QStringLiteral("inputs")).toInt(&okIn, 16);
+        m_status.inputs = okIn ? inputs : -1;  /* older firmware: no switches */
+        m_status.switches = TokenValue(line, QStringLiteral("sw")).toInt(nullptr, 16);
+        m_status.homed = TokenValue(line, QStringLiteral("homed")).toInt();
+        m_status.homeMode = TokenValue(line, QStringLiteral("home_mode")).toInt();
         const int f = line.indexOf(QLatin1String(" fault="));
         m_status.fault = (f >= 0) ? line.mid(f + 7).trimmed() : QStringLiteral("none");
         emit statusUpdated(m_status);

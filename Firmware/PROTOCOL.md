@@ -127,7 +127,12 @@ Pen changes happen only with XY stopped. Segments between pen changes stream thr
 
 **CoreXY / H-bot** (`kinematics 1`): the board plans and draws in X/Y as before and sends A = X+Y to M0 and B = X-Y to M1 (in steps). Both belts run on pulleys of pitch diameter `pulley_dia_mm` (default 12.7324 mm: a 20-tooth GT2 pulley, 40 mm of belt per revolution; pitch diameter = teeth x belt pitch / pi), so the scale is `steps_rev` / (pi x `pulley_dia_mm`) steps per mm, and `mm_rev_x`/`mm_rev_y` are not used. M0 and M1 must have the same `steps_rev` (the board refuses `kinematics 1` otherwise). A motor runs up to 1.41 times the path speed and acceleration, on 45° moves; `motor_max_mm_s` (belt mm/s, 0 = no limit) lowers the path speed of a segment so that no motor exceeds it. `corner_mm_s` limits the speed change of each motor at a corner. To match the belts and motors of the machine, use `dir_x`, `dir_y` and `swap_xy` (exchange X and Y): together they cover every layout (exchanging motors A and B mirrors Y; reversing one motor exchanges X and Y and mirrors both). Changing `kinematics` or `swap_xy` makes the present position plotter 0,0.
 
+**Limit and home switches** (optional): each of X+, X-, X home, Y+, Y-, Y home can be an input (DI-7, DI-8, A-9..A-12, IO-0..IO-5; not DI-6 or the pen output). A home switch may share a limit's input on its axis. Switches belong to the HP-GL axes, not the motors, so they work the same with CoreXY, `dir_x/y` and `swap_xy`. The inputs are sampled in the 5 kHz step interrupt (`SysMgr.SampleCallbackSet`); a switch changes state after 3 samples in a row (0.6 ms), and the position of the first is kept as where it tripped. A tripped limit stops motion *toward* it in that same sample: `CoordinatedMotionController::StopRamped()` replaces the running move with one straight decel along the present direction at 3 x `accel_mm_s2` and drops the queue. Motion away from it is always allowed. Simulated switches (`sim`) are fixed to the machine (a position counter that homing and `origin` do not move), for bench tests.
+
+**Homing** (`home_mode 1`): per axis in `home_order`: pen up; off the switch if tripped; search at `*_home_fast` (up to `*_home_travel`, 0 = 1.2 x plot + 20 mm); back off until released plus `*_home_back`; latch at `*_home_slow`; the latched edge becomes `*_home_at` (whole steps, so homing repeats exactly). `home_mode 2` is ClearPath hard-stop homing (Cartesian): the board disables M0/M1, enables them, waits up to 120 s for HLFB, then sets X/Y to `x_home_at`/`y_home_at`. `home_required 1` holds jobs in their channel until the axes are homed and starts the homing itself. Homed is lost on disable, estop, motor fault and `origin`.
+
 **Faults:**
+- **Limit:** a job, `goto` or `pen` move that reaches a limit stops (ramped), the job is dropped, the pen lifts, the motors stay enabled, and `limit X+ (DI-7)` latches; the next job waits for `clear`. A jog onto a limit just stops (no fault). Homing fails with its own message (see `swinfo`).
 - **DI-6 trip, motor alert or HLFB failure:** the motors disable and the rest of the job is dropped. A TCP job is closed; a serial job is discarded until its source is quiet for 2 s. The fault latches until `clear` or `enable`.
 - **`pause`:** holds at the end of the queued segments and raises the pen. `resume` lowers it and continues.
 
@@ -137,7 +142,7 @@ Every command ends with a line starting `ok` or `error:`.
 
 | Command | Effect |
 |---------|--------|
-| `status` | `state=idle\|buffering\|plotting\|paused\|disabled\|waiting_enable\|fault`, position in mm, pen, queue depth, counters, link stats |
+| `status` | `state=idle\|buffering\|plotting\|paused\|homing\|jogging\|disabled\|waiting_enable\|fault`, position in mm, pen, queue depth, counters, `inputs=` (hex, bit per input code: 0-5 IO-0..5, 7 DI-7, 8 DI-8, 9-12 A-9..12), `sw=` (hex tripped switches: 1 X+, 2 X-, 4 X home, 8 Y+, 10 Y-, 20 Y home), `homed=` (1 X, 2 Y), `home_mode=`, `estop=`, then `fault=` (last, may contain spaces); link stats on a second line |
 | `config` | every setting with its current value |
 | `set <key> <value>` | validate, apply, save to NVM. `[disabled]` keys need motors disabled; `[idle]` keys need no job running (motors may stay enabled); `[restart]` keys apply after `restart`. |
 | `defaults` | factory settings (motors disabled) |
@@ -148,6 +153,13 @@ Every command ends with a line starting `ok` or `error:`.
 | `goto <x_mm> <y_mm>` | pen-up move (no job running) |
 | `pen up` / `pen down` | pen test (no job running) |
 | `clear` | clear a latched fault |
+| `home [x\|y\|all\|stop]` | home the axes (no argument / `all`: each axis with a home switch, or both for `home_mode 2`) |
+| `jog <x\|y> <mm_s> [stopon <in>,...]` | jog an axis (signed speed, capped at `max_mm_s`) for 0.5 s; repeat the command to keep it going. Same speed: extends the deadman; a different speed or axis ramps down and starts again. `stopon`: stop when one of these inputs leaves the level it had at the start; the jog is then refused with `stopped on a switch: <in> (jog stop)` until `jog stop`. Refused toward a tripped limit (`limit X+ tripped: jog the other way`). Stops on a limit without a fault. |
+| `jog stop` | ramp the jog down, clear a stop-on |
+| `swinfo` (or `jog`) | `inputs levels= sim= tripped=`, one `switch <x+\|x-\|x_home\|y+\|y-\|y_home> input= open= tripped= trips= at=` line each (limit stops, where the last one tripped in mm), `pos x= y= moving=`, `jog on= axis= v= stopped= limit=`, `laststop n= kind= switch= input= x= y=` (`n` counts every switch stop since power-up), `home mode= state= homed= x_ends= x_latch= y_ends= y_latch= last=` |
+| `sim <in> low\|high\|off` | hold an input's level (bench test) |
+| `sim <in> <x+\|x-\|y+\|y-> <mm>` | a simulated switch on the input, `<mm>` from the head on that side, fixed to the machine; its level follows the contact of the switch using the input |
+| `sim clear` | remove all simulation |
 | `tel <ms>` | TCP console only: push `TEL ms= x= y= pen= state= queue=` every `<ms>` (min 10, `0` off). Sent only when the TCP send buffer has room, so a slow client cannot stall motion. The app uses 25 ms. |
 | `restart` | reboot |
 | `version`, `help`, `exit` | |
@@ -178,9 +190,14 @@ Stored in the NVM user page with magic `CHPG`, so blobs left by ClearAI (`CAIC`)
 | `ident` | `7475A` | live. `758x` / `759x` (DraftMaster, e.g. AutoCAD's "Draftmaster 2 (7596A)" driver): plotter 0,0 at the bed centre, `OH` reports `-w/2,-h/2,w/2,h/2` |
 | `optimize` | 3 (USB + COM) | live. Sources to buffer and reorder: 1 USB, 2 COM, 4 network |
 | `job_speed` | 1 | live. 1: a job's `VS` sets the pen-down speed (cm/s, capped at `max_mm_s`). 0: ignore `VS`, always `draw_mm_s` |
+| `x_limit_plus`, `x_limit_minus`, `x_home`, `y_limit_plus`, `y_limit_minus`, `y_home` | none | idle. An input name (`DI-7`, `A-9`, `IO-3`, ...) or `none` |
+| `switch_open` | 0 | idle. Normally open switches: 1 X+, 2 X-, 4 X home, 8 Y+, 16 Y-, 32 Y home (default normally closed: tripped when the input is off) |
+| `home_mode` | 0 | idle. 0 off, 1 home switches, 2 ClearPath hard stop (Cartesian, needs `hlfb_check 1`) |
+| `home_required`, `home_order` | 0, 0 | live. Home before jobs; 0 X then Y, 1 Y then X |
+| `x_home_dir`, `x_home_fast`, `x_home_slow`, `x_home_back`, `x_home_at`, `x_home_travel` (and `y_`) | -1, 20, 2, 3, 0, 0 | idle. Toward the switch; mm/s; mm/s; mm; position at the switch, mm; longest search, mm (0 = plot size x 1.2 + 20) |
 
 ## Not implemented yet
 
 - `LB` text (needs a stroke font), fills for `RA` / `RR` / `WG` / `FP`, line types (`LT`), `PW` pen width.
-- Homing to limit switches; soft limits beyond the hard clip.
+- Soft limits beyond the hard clip (homing gives the frame; the plot area is the hard clip).
 - Multi-pen carousel (`SP` n > 1 is accepted but does not pause for a pen change).

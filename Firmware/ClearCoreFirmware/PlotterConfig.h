@@ -34,4 +34,16 @@
 /* Bytes handed to the interpreter per main-loop pass. */
 #define CHPGL_FEED_BURST 512
 
+/* Jog: a jog stops this long after its last renewal (the app renews it while a button is held). */
+#ifndef CHPGL_JOG_DEADMAN_MS
+#define CHPGL_JOG_DEADMAN_MS 500u
+#endif
+/* ClearPath hard-stop homing: motors off this long before the homing enable; the longest homing. */
+#ifndef CHPGL_HARD_HOME_OFF_MS
+#define CHPGL_HARD_HOME_OFF_MS 250u
+#endif
+#ifndef CHPGL_HARD_HOME_TIMEOUT_MS
+#define CHPGL_HARD_HOME_TIMEOUT_MS 120000u
+#endif
+
 #endif

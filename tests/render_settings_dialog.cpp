@@ -7,6 +7,7 @@
 #include "FirmwareDialog.h"
 #include "MainWindow.h"
 #include "ScopeWindow.h"
+#include "SwitchWizard.h"
 #include "PlotterSettingsDialog.h"
 #include "HpglPreview.h"
 
@@ -14,6 +15,9 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QTextStream>
+#include <QPushButton>
+
+#include <cmath>
 
 #include <cstdio>
 #include <cstdlib>
@@ -76,6 +80,90 @@ int main(int argc, char **argv) {
         }
         w.stopAndDisconnect();
         return ok ? 0 : 1;
+    }
+    if (QString::fromLocal8Bit(argv[1]) == QLatin1String("--wizard")) {
+        /* Plotter > Set up limits and homing, each step fed as a plotter would: --wizard <out-prefix> */
+        QMap<QString, QString> cfg{{"dir_x", "1"}, {"width_mm", "600"}, {"pen_mode", "0"}, {"pen_io", "0"},
+                                   {"switch_open", "0"}};
+        MainWindow parent;
+        SwitchWizard w(nullptr, cfg, &parent);
+        w.show();
+        const QString out = QString::fromLocal8Bit(argv[2]);
+        int fails = 0;
+        auto check = [&fails](bool c, const char *what) {
+            std::printf("  %s %s\n", c ? "PASS" : "FAIL", what);
+            fails += c ? 0 : 1;
+        };
+        auto shot = [&](const char *name) {
+            QCoreApplication::processEvents();
+            w.grab().save(out + QLatin1String(name) + QLatin1String(".png"));
+        };
+        w.setWantedForTest(true, true, true);
+        shot("1_axis");
+        w.setStepForTest(SwitchWizard::kStepFind);
+        const int rest = (1 << 7) | (1 << 8);  /* DI-7, DI-8 closed at rest; A-9 open */
+        w.feedLevels(rest);
+        // Find each: press, release
+        struct { int sw; int bit; } finds[] = {{SwitchWizard::kPlus, 7}, {SwitchWizard::kMinus, 8}, {SwitchWizard::kHome, 9}};
+        for (auto f : finds) {
+            w.findSwitch(f.sw);
+            w.feedLevels(rest ^ (1 << f.bit));
+            w.feedLevels(rest);
+        }
+        check(w.found(SwitchWizard::kPlus).input == 7 && w.found(SwitchWizard::kMinus).input == 8 &&
+                  w.found(SwitchWizard::kHome).input == 9, "found DI-7, DI-8, A-9");
+        check(!w.found(SwitchWizard::kPlus).normallyOpen && w.found(SwitchWizard::kHome).normallyOpen,
+              "contacts from the rest levels");
+        shot("2_find");
+        w.setStepForTest(SwitchWizard::kStepContact);
+        shot("3_contact");
+        w.setStepForTest(SwitchWizard::kStepDirection);
+        w.feedStop(+1, QStringLiteral("A-9"));
+        check(w.homeSide() == 1, "home seen on the + side");
+        w.feedStop(-1, QStringLiteral("DI-7"));  /* the + limit going -: ask */
+        shot("4_direction_ask");
+        w.answer(false);                          /* swapped in Find */
+        check(w.found(SwitchWizard::kMinus).input == 7 && w.found(SwitchWizard::kMinus).proved, "swapped");
+        w.feedStop(+1, QStringLiteral("DI-8"));
+        check(w.found(SwitchWizard::kPlus).proved, "+ proved");
+        shot("4_direction");
+        const QStringList lim = w.limitCommands();
+        check(lim.contains(QStringLiteral("set x_limit_plus DI-8")) && lim.contains(QStringLiteral("set switch_open 4")),
+              "limit commands");
+        w.setStepForTest(SwitchWizard::kStepLimits);
+        auto swinfo = [&](int tripsP, int trP, double atP, int tripsM, int trM, double atM, double pos, int moving) {
+            w.feedSwinfo({QStringLiteral("switch x+ input=DI-8 open=0 tripped=%1 trips=%2 at=%3").arg(trP).arg(tripsP).arg(atP),
+                          QStringLiteral("switch x- input=DI-7 open=0 tripped=%1 trips=%2 at=%3").arg(trM).arg(tripsM).arg(atM),
+                          QStringLiteral("pos x=%1 y=0.000 moving=%2").arg(pos).arg(moving)});
+        };
+        swinfo(0, 0, 0, 0, 0, 0, 10, 0);
+        swinfo(1, 1, 120.5, 0, 0, 0, 120.9, 1);
+        swinfo(1, 1, 120.5, 0, 0, 0, 120.8, 0);
+        swinfo(1, 0, 120.5, 0, 0, 0, 115.0, 0);
+        swinfo(1, 0, 120.5, 1, 1, -3.25, -3.5, 0);
+        swinfo(1, 0, 120.5, 1, 0, -3.25, 2.0, 0);
+        check(w.limitStopped(0) && w.limitCleared(0) && std::fabs(w.overtravelMm(0) - 0.3) < 1e-6, "+ limit stop and overtravel");
+        check(w.limitStopped(1) && w.limitCleared(1), "- limit stop");
+        shot("5_limits");
+        w.setStepForTest(SwitchWizard::kStepHome);
+        w.startHomeRunsForTest(3);
+        auto home = [&](int ends, double latch, const char *last) {
+            w.feedSwinfo({QStringLiteral("home mode=1 state=idle homed=1 x_ends=%1 x_latch=%2 y_ends=0 y_latch=0.000 last=%3")
+                              .arg(ends).arg(latch).arg(QLatin1String(last))});
+        };
+        home(0, 0, "none");
+        home(1, -40.0, "ok");
+        home(2, 0.004, "ok");
+        home(3, -0.006, "ok");
+        check(w.homeRuns() == 3 && std::fabs(w.homeSpreadMm() - 0.010) < 1e-9, "3 homings, spread 0.010 mm");
+        shot("6_home");
+        const QStringList hc = w.homeCommands();
+        check(hc.contains(QStringLiteral("set x_home A-9")) && hc.contains(QStringLiteral("set home_mode 1")), "home commands");
+        w.setStepForTest(SwitchWizard::kStepReview);
+        shot("7_review");
+        for (const QString &c : w.applyCommands()) std::printf("    %s\n", qPrintable(c));
+        std::printf("%d failures\n", fails);
+        return fails ? 1 : 0;
     }
     if (QString::fromLocal8Bit(argv[1]) == QLatin1String("--firmware")) {
         /* Plotter > Update board firmware, after it has read the board on USB: --firmware <out.png> */

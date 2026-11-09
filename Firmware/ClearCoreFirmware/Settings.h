@@ -73,6 +73,19 @@ struct PlotterSettings {
 
     /* Added in version 5. */
     float pulleyDiaMm;   /* CoreXY: pulley pitch diameter, both motors (travel per rev = pi x this) */
+
+    /* Added in version 6: limit and home switches, homing (Switches.h). */
+    int8_t swPin[6];     /* input code per switch (X+, X-, X home, Y+, Y-, Y home), -1 none */
+    uint8_t swOpen;      /* bit per switch: normally open (tripped when high) */
+    uint8_t homeMode;    /* 0 off, 1 board homing on the home switches, 2 ClearPath hard-stop homing */
+    uint8_t homeRequired;  /* plots wait for homing (run automatically) after enable */
+    uint8_t homeOrder;   /* 0 X then Y, 1 Y then X */
+    int8_t homeDir[2];   /* toward the home switch, per axis */
+    float homeFast[2];   /* search speed, mm/s */
+    float homeSlow[2];   /* latch speed, mm/s */
+    float homeBack[2];   /* back-off, mm */
+    float homeAt[2];     /* the axis's position at the switch (mm) */
+    float homeTravel[2]; /* longest search, mm; 0 = from the plot area */
     uint32_t checksum;
 };
 #pragma pack(pop)

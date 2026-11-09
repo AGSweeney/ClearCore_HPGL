@@ -10,6 +10,7 @@
 #include "FirmwareDialog.h"
 #include "PlotterSettingsDialog.h"
 #include "ScopeWindow.h"
+#include "SwitchWizard.h"
 #include "PositionView3D.h"
 
 #include <QAction>
@@ -317,6 +318,11 @@ void MainWindow::BuildUi() {
     scopeAction->setToolTip(QStringLiteral("Traces from a ClearPath servo on its own USB port: tracking error, velocity, "
                                            "bus voltage, temperature, HLFB, enable and alerts."));
     connect(scopeAction, &QAction::triggered, this, &MainWindow::OpenClearPathScope);
+    setupMenu->addSeparator();
+    auto *switchAction = setupMenu->addAction(QStringLiteral("Set up limits and homing…"));
+    switchAction->setToolTip(QStringLiteral("Find each limit and home switch, prove it by driving the axis to it, "
+                                            "and set up homing."));
+    connect(switchAction, &QAction::triggered, this, &MainWindow::OpenSwitchWizard);
 
     auto *viewMenu = menuBar()->addMenu("&View");
     m_toggleLogAction = new QAction("Command &log", this);
@@ -420,8 +426,11 @@ void MainWindow::BuildUi() {
     m_originButton = new QPushButton("Set origin", controlGroup);
     m_originButton->setToolTip("The current pen position becomes plotter 0,0 (console: origin).");
     m_clearFaultButton = new QPushButton("Clear fault", controlGroup);
+    m_homeButton = new QPushButton("Home", controlGroup);
+    m_homeButton->setToolTip("Home the axes on their home switches (console: home). Set up in "
+                             "Plotter > Set up limits and homing.");
     for (auto *b : {m_enableButton, m_disableButton, m_abortButton, m_pauseButton, m_originButton,
-                    m_clearFaultButton}) {
+                    m_clearFaultButton, m_homeButton}) {
         b->setMinimumHeight(30);
         b->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     }
@@ -438,6 +447,7 @@ void MainWindow::BuildUi() {
     controlRow2->setSpacing(6);
     controlRow2->addWidget(m_originButton);
     controlRow2->addWidget(m_clearFaultButton);
+    controlRow2->addWidget(m_homeButton);
     controlRow2->addStretch(1);
     controlLayout->addLayout(controlRow2);
 
@@ -685,6 +695,7 @@ void MainWindow::BuildUi() {
     connect(m_pauseButton, &QPushButton::clicked, this, &MainWindow::TogglePause);
     connect(m_originButton, &QPushButton::clicked, this, [this]() { Command("origin"); });
     connect(m_clearFaultButton, &QPushButton::clicked, this, [this]() { Command("clear"); });
+    connect(m_homeButton, &QPushButton::clicked, this, [this]() { Command("home"); });
     connect(m_gotoButton, &QPushButton::clicked, this, &MainWindow::GotoTarget);
     connect(m_penUpButton, &QPushButton::clicked, this, [this]() { Command("pen up"); });
     connect(m_penDownButton, &QPushButton::clicked, this, [this]() { Command("pen down"); });
@@ -739,6 +750,7 @@ void MainWindow::UpdateMachineButtons() {
         b->setEnabled(conn && !serialStreaming);
     }
     m_abortButton->setEnabled(conn);
+    m_homeButton->setEnabled(manualOk && s.valid && s.homeMode > 0);
     m_gotoButton->setEnabled(manualOk);
     m_penUpButton->setEnabled(manualOk);
     m_penDownButton->setEnabled(manualOk);
@@ -920,6 +932,27 @@ void MainWindow::OpenFirmwareUpdate() {
     dlg->show();
 }
 
+void MainWindow::OpenSwitchWizard() {
+    if (!m_link.isConnected()) {
+        QMessageBox::information(this, QStringLiteral("Set up limits and homing"),
+                                 QStringLiteral("Connect to the plotter first: the wizard drives the axes and reads "
+                                                "the switches live."));
+        return;
+    }
+    if (m_switchWizard) {
+        m_switchWizard->show();
+        m_switchWizard->raise();
+        m_switchWizard->activateWindow();
+        return;
+    }
+    m_switchWizard = new SwitchWizard(&m_link, m_deviceConfig, this);
+    m_switchWizard->setAttribute(Qt::WA_DeleteOnClose);
+    connect(m_switchWizard, &QObject::destroyed, this, [this]() { m_switchWizard = nullptr; });
+    connect(m_switchWizard, &SwitchWizard::settingsWritten, this, [this]() { m_link.sendCommand(QStringLiteral("config")); });
+    m_link.sendCommand(QStringLiteral("config"));  /* the wizard takes the reply too */
+    m_switchWizard->show();
+}
+
 void MainWindow::OpenClearPathScope() {
     if (!m_scope) {
         m_scope = new ScopeWindow(this);
@@ -953,6 +986,19 @@ void MainWindow::OnStatus(const PlotterLink::Status &s) {
     }
     if (s.estop == QLatin1String("open")) {
         text += QStringLiteral(" · ESTOP OPEN");
+    }
+    if (s.homeMode > 0) {
+        text += (s.homed & 3) ? QStringLiteral(" · homed") : QStringLiteral(" · not homed");
+    }
+    {
+        static const char *const kLimit[] = {"X+", "X−", nullptr, "Y+", "Y−", nullptr};
+        QStringList tripped;
+        for (int i = 0; i < 6; ++i) {
+            if (kLimit[i] && ((s.switches >> i) & 1)) tripped << QString::fromUtf8(kLimit[i]);
+        }
+        if (!tripped.isEmpty()) {
+            text += QStringLiteral(" · ON LIMIT %1").arg(tripped.join(QLatin1Char(' ')));
+        }
     }
     if (faulted) {
         text += QStringLiteral(" · FAULT: %1").arg(s.fault);
@@ -1048,6 +1094,14 @@ void MainWindow::TrackExternalJob(const PlotterLink::Status &s, bool faulted) {
 void MainWindow::OnCommandFinished(const QString &command, bool ok, const QStringList &lines) {
     if (command == QLatin1String("status") || command.startsWith(QLatin1String("tel "))) {
         return;  /* background poll / optional telemetry (older firmware rejects it quietly) */
+    }
+    /* The limits-and-homing wizard reads its own replies (a jog refused at a switch is how it works). */
+    if (command.startsWith(QLatin1String("jog")) || command == QLatin1String("swinfo") ||
+        command.startsWith(QLatin1String("sim "))) {
+        return;
+    }
+    if (m_switchWizard && m_switchWizard->isVisible() && command != QLatin1String("config")) {
+        return;
     }
     if (command.startsWith(QLatin1String("set ")) && !ok) {
         m_settingsErrors << QStringLiteral("%1: %2").arg(command.mid(4), lines.isEmpty() ? QString() : lines.last());

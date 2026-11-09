@@ -37,6 +37,10 @@ public:
         QString fault;  // "none" when clear
         QString estop;  // "ok" / "open"
         QString source; // usb, com, tcp, none
+        int inputs = -1;  // input levels, bit per input code (IO-0..5, DI-7, DI-8, A-9..12); -1 not reported
+        int switches = 0; // tripped switches: 1 X+, 2 X-, 4 X home, 8 Y+, 16 Y-, 32 Y home
+        int homed = 0;    // bit per homed axis (1 X, 2 Y)
+        int homeMode = 0; // 0 off, 1 switches, 2 ClearPath hard stop
     };
 
     static constexpr quint16 kHpglPort = 9100;

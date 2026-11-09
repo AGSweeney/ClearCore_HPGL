@@ -54,4 +54,28 @@ void PlotterDiag(void (*out)(const char *line));
 /* Clear the timing probe (console "diag reset"). */
 void PlotterDiagReset();
 
+/* Limits and homing (Switches.h). Axes: 0 X, 1 Y, as HP-GL sees them. */
+/* Jog an axis at mmPerS (signed) for the next 0.5 s; call again within that to keep it going.
+ * stopOn: inputs (bit per code) that stop it when they leave the level they read now. After a
+ * stop on one of them, the jog is refused until PlotterJogStop(). */
+const char *PlotterJog(int axis, double mmPerS, uint16_t stopOn);
+void PlotterJogStop();
+/* Home the axes in the mask (bit 0 X, bit 1 Y, in home_order); 0 = each axis with a home switch. */
+const char *PlotterHome(uint8_t axes);
+void PlotterHomeStop();
+/* Bit per homed axis. */
+uint8_t PlotterHomed();
+/* Called before the interpreter is fed: true while jobs must wait (homing, or home_required and
+ * not homed). jobWaiting: a job is ready to run, which starts the homing. */
+bool PlotterHoldJobs(bool jobWaiting);
+/* True once after the head's position was set (homing): the interpreter resyncs. */
+bool PlotterTakePositionChanged();
+/* Bench simulation (console "sim"): mode 0 off, 1 low, 2 high. */
+void PlotterSimLevel(int code, int mode);
+/* A switch on input code fixed to the machine, mm from here on side (+1 / -1) of axis. */
+void PlotterSimAt(int code, int axis, int side, double mm);
+void PlotterSimClear();
+/* Console "swinfo": inputs, switches, the last stops, homing. */
+void PlotterSwitchInfo(void (*out)(const char *line));
+
 #endif

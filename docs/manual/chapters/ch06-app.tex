@@ -278,6 +278,52 @@ plots. If the board refuses a change, the app shows the settings that did not
 change and the reason. The plot area of the app changes to the plot area of
 the board.
 
+\section{ClearPath Scope}\label{sec:scope}
+
+\menu{Plotter\,>\,ClearPath scope\ldots} (Ctrl+Shift+O) records the signals
+of the ClearPath servos through the USB port of each servo, the port that
+ClearPath MSP uses. It shows them in lanes on one time axis
+(figure~\ref{fig:scope}). Use it to see how the X and Y servos follow a plot:
+the tracking error on each acceleration, the speed, the bus voltage, the
+temperature, and the HLFB, enable, and alert signals.
+
+The scope does not use the ClearCore. Thus it operates during a plot, and
+over any link.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{clearpath-scope.png}
+\caption{The ClearPath scope, on its simulated motor}\label{fig:scope}
+\end{figure}
+
+\begin{procedure}{Record a ClearPath servo}
+\begin{enumerate}
+  \item Connect the USB port of the servo to the computer.
+  \item Close ClearPath MSP. One program at a time can use the port.
+  \item Select \menu{Plotter\,>\,ClearPath scope\ldots}.
+  \item In \menu{Motor}, select the servo (\emph{ClearPath on COMn}). For more
+        than one servo, click \menu{Connect all}.
+  \item Click \menu{Connect}, then \menu{Start}.
+  \item Click \menu{Stop} to stop the recording, then \menu{Disconnect}.
+\end{enumerate}
+\end{procedure}
+
+\begin{itemize}
+  \item \menu{Lanes} selects the signals, their sequence, color, and scale.
+  \item \menu{Trigger} holds the screen on a repeated event, for example
+        HLFB going low at the start of each move.
+  \item \menu{Freeze} holds the view while the recording continues.
+        \menu{Save CSV\ldots} saves the recording.
+  \item \menu{Help} (F1) opens the full description of the scope.
+  \item Without a servo, select \menu{Simulated motor} to try the scope.
+\end{itemize}
+
+\begin{note}
+\notelabel The scope sets the working monitor channel of the servo while it
+records, and sets it back when it stops. It saves nothing in the servo, and
+it never enables or moves the motor.
+\end{note}
+
 \section{Other Functions}
 
 \begin{itemize}

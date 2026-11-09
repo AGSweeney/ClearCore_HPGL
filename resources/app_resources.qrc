@@ -3,5 +3,12 @@
     <file>icons/clearcnc_app_icon.svg</file>
     <file>icons/combo-down.svg</file>
     <file>icons/spin-up.svg</file>
+    <file>icons/spin-down.svg</file>
+    <file>icons/check.svg</file>
+    <file>help/scope.html</file>
+    <file>help/images/scope_overview.png</file>
+    <file>help/images/scope_lanes.png</file>
+    <file>help/images/scope_overlay.png</file>
+    <file>help/images/scope_trigger.png</file>
   </qresource>
 </RCC>

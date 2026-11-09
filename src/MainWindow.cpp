@@ -7,7 +7,9 @@
 #include "HpglPreview.h"
 #include "PathGapBridge.h"
 #include "PathVizIssues.h"
+#include "FirmwareDialog.h"
 #include "PlotterSettingsDialog.h"
+#include "ScopeWindow.h"
 #include "PositionView3D.h"
 
 #include <QAction>
@@ -55,6 +57,7 @@
 #include <QWidget>
 
 #include <cfloat>
+#include <memory>
 #include <utility>
 
 namespace {
@@ -305,6 +308,15 @@ void MainWindow::BuildUi() {
     auto *setupMenu = menuBar()->addMenu("&Plotter");
     auto *settingsAction = setupMenu->addAction("Plotter settings...");
     connect(settingsAction, &QAction::triggered, this, &MainWindow::ShowPlotterSettings);
+    setupMenu->addSeparator();
+    auto *firmwareAction = setupMenu->addAction(QStringLiteral("Update board firmware…"));
+    firmwareAction->setToolTip(QStringLiteral("Put this app's firmware on the ClearCore over USB; its settings stay."));
+    connect(firmwareAction, &QAction::triggered, this, &MainWindow::OpenFirmwareUpdate);
+    auto *scopeAction = setupMenu->addAction(QStringLiteral("ClearPath scope…"));
+    scopeAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
+    scopeAction->setToolTip(QStringLiteral("Traces from a ClearPath servo on its own USB port: tracking error, velocity, "
+                                           "bus voltage, temperature, HLFB, enable and alerts."));
+    connect(scopeAction, &QAction::triggered, this, &MainWindow::OpenClearPathScope);
 
     auto *viewMenu = menuBar()->addMenu("&View");
     m_toggleLogAction = new QAction("Command &log", this);
@@ -866,6 +878,55 @@ void MainWindow::ConnectOrDisconnect() {
     }
     SetConnectedUi(true);
     Command("config");
+}
+
+// The update owns the ClearCore's USB port while it runs, and the board restarts, so the app's link lets go
+// (a serial link at once, an Ethernet link just before flashing) and connects again when the window closes.
+void MainWindow::OpenFirmwareUpdate() {
+    if (findChild<FirmwareDialog *>()) {
+        return;
+    }
+    if (m_link.jobActive()) {
+        QMessageBox::information(this, "Update board firmware", "A plot is being sent. Update the firmware when it has finished.");
+        return;
+    }
+    auto dropLink = [this](const QString &why) {
+        m_link.disconnectLink();
+        m_jobSending = false;
+        m_jobAwaitingFinish = false;
+        AppendLog(why);
+        SetConnectedUi(false);
+    };
+    const bool wasConnected = m_link.isConnected();
+    if (wasConnected && m_link.transport() == PlotterLink::Transport::Serial) {
+        dropLink(QStringLiteral("Disconnected: the firmware update needs the USB port"));
+    }
+    auto *dlg = new FirmwareDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setWindowModality(Qt::WindowModal);
+    auto again = std::make_shared<bool>(wasConnected);
+    connect(dlg, &FirmwareDialog::aboutToUpdate, this, [this, again, dropLink]() {
+        *again = *again || m_link.isConnected();
+        if (m_link.isConnected()) {
+            dropLink(QStringLiteral("Disconnected: the board restarts for the firmware update"));
+        }
+    });
+    connect(dlg, &QDialog::finished, this, [this, again]() {
+        if (*again && !m_link.isConnected()) {
+            AppendLog(QStringLiteral("Connecting again after the firmware update"));
+            ConnectOrDisconnect();
+        }
+    });
+    dlg->show();
+}
+
+void MainWindow::OpenClearPathScope() {
+    if (!m_scope) {
+        m_scope = new ScopeWindow(this);
+    }
+    m_scope->show();
+    m_scope->raise();
+    m_scope->activateWindow();
 }
 
 void MainWindow::OnLinkLost(const QString &reason) {

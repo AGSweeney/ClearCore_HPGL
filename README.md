@@ -59,6 +59,8 @@ Watch the [screen recording of the desktop app on YouTube](https://www.youtube.c
 | **Preview** | Uses the firmware's own interpreter, compiled into the app, so position, rotation, scaling and clipping match what the board will draw. |
 | **Plot and monitor** | Over Ethernet or serial. A 3D view of the bed shows the pen live and paints what has been drawn in green; the HP-GL line being drawn is highlighted; a cycle timer records the run. Jobs sent by other programs (AutoCAD on the USB port, for example) are followed the same way. |
 | **Control** | Enable, pause, abort, jog, set origin, pen up/down, and the board's settings. |
+| **Firmware update** | **Plotter → Update board firmware** puts the firmware the app was built with on the ClearCore over USB (bootloader, write, verify, version check). The board keeps its settings. |
+| **ClearPath scope** | **Plotter → ClearPath scope** records the X and Y servos through their own USB ports while they plot: tracking error, velocity, bus voltage, temperature, HLFB, enable and alerts, with a trigger and CSV export. |
 
 ## What you need
 
@@ -72,7 +74,7 @@ Watch the [screen recording of the desktop app on YouTube](https://www.youtube.c
 
 ## Getting started
 
-1. **Flash the firmware** to a USB-connected ClearCore:
+1. **Flash the firmware** to a USB-connected ClearCore, from the app (**Plotter → Update board firmware**) or from the source:
 
    ```powershell
    ./Firmware/build.ps1 -Flash

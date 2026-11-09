@@ -1,23 +1,71 @@
 \chapter{Install the Firmware}\label{ch:firmware}
 
-This chapter tells you how to build the firmware and how to load it into the
-ClearCore. Do the same procedure when you update the firmware.
+This chapter tells you how to load the firmware into the ClearCore. The
+easiest way is from the desktop app (section~\ref{sec:fw-app}). To build the
+firmware from its source, use the procedure in
+section~\ref{sec:fw-build}.
 
 \section{What You Need}
 
 \begin{itemize}
-  \item A Windows computer with Microchip Studio 7 (formerly Atmel Studio 7).
-        The build script uses its ARM compiler and its \file{make.exe}.
-  \item The ClearHPGL source repository.
   \item A USB cable from the computer to the ClearCore.
   \item A 24~V supply for the ClearCore. The board must not get its power
         only from USB when it writes its settings.
+  \item From the app: the ClearHPGL desktop app. It carries the firmware and
+        the flash tool in its \file{firmware} directory.
+  \item To build from the source: a Windows computer with Microchip Studio 7
+        (formerly Atmel Studio 7) and the ClearHPGL source repository. The
+        build script uses the ARM compiler and the \file{make.exe} of
+        Microchip Studio. The repository contains the flash tools:
+        \file{tools/bossac/bossac.exe} and \file{tools/flash_clearcore.cmd},
+        from Teknic.
 \end{itemize}
 
-The repository contains the flash tools that you need: \file{tools/bossac/bossac.exe}
-and \file{tools/flash_clearcore.cmd}, from Teknic.
+\section{Update from the App}\label{sec:fw-app}
 
-\section{Build and Load the Firmware}
+The desktop app carries the firmware that it was built with. It can put that
+firmware on the ClearCore over USB. You do not need Microchip Studio or a
+command line.
+
+\begin{warning}
+Updating restarts the board. Make sure that no job is plotting and that the
+work area is clear. If the motors are enabled, the update disables them
+first.
+\end{warning}
+
+\begin{procedure}{Update the firmware from the app}
+\begin{enumerate}
+  \item Connect the ClearCore to the computer with the USB cable.
+  \item In the app, select \menu{Plotter\,>\,Update board firmware\ldots}. If
+        the app is connected to the board over USB, it disconnects first.
+  \item In \menu{USB port}, select the ClearCore. The window shows the
+        firmware on the board and the firmware that the app carries
+        (figure~\ref{fig:fwdialog}).
+  \item Click \menu{Update to} (or \menu{Reinstall}) and wait. Do not
+        disconnect the cable.
+  \item Make sure that the window shows ``Firmware \ldots\ is running.''
+  \item Click \menu{Close}. The app connects to the board again.
+\end{enumerate}
+\end{procedure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{firmware-dialog.png}
+\caption{\menu{Update board firmware}, with the board read on COM3}\label{fig:fwdialog}
+\end{figure}
+
+The update keeps all settings of the board: the plot area, the speeds, and
+the network address. They are in a part of the memory that the update does
+not erase. The update does not start while a job plots.
+
+\begin{note}
+\notelabel If the update stops (for example, the cable is disconnected), the
+board can have no firmware. Push the reset button of the ClearCore two times
+quickly, so that the IO-0 to IO-5 lights move in sequence. Then click
+\menu{Refresh} and update again.
+\end{note}
+
+\section{Build and Load the Firmware}\label{sec:fw-build}
 
 \begin{warning}
 Loading firmware restarts the board. Make sure that no job is plotting and

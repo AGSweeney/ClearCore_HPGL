@@ -29,6 +29,17 @@ qt_add_executable(ClearHPGL WIN32
     src/PathGapBridge.cpp
     src/PathVizIssues.h
     src/PathVizIssues.cpp
+    # From the Electronic CAM Workbench: the firmware updater and the ClearPath scope.
+    src/Theme.h
+    src/Theme.cpp
+    src/FirmwareUpdate.h
+    src/FirmwareUpdate.cpp
+    src/FirmwareDialog.h
+    src/FirmwareDialog.cpp
+    src/ClearPathLink.h
+    src/ClearPathLink.cpp
+    src/ScopeWindow.h
+    src/ScopeWindow.cpp
     resources/app_resources.qrc
     # The firmware's HP-GL interpreter (portable C++), so the preview matches the plotter.
     Firmware/ClearCoreFirmware/Hpgl.h
@@ -89,6 +100,11 @@ if (CLEARHPGL_BUILD_TESTS)
         src/DxfImport.cpp src/DxfImport.h
         src/PathGapBridge.cpp src/PathGapBridge.h
         src/PathVizIssues.cpp src/PathVizIssues.h
+        src/Theme.cpp src/Theme.h
+        src/FirmwareUpdate.cpp src/FirmwareUpdate.h
+        src/FirmwareDialog.cpp src/FirmwareDialog.h
+        src/ClearPathLink.cpp src/ClearPathLink.h
+        src/ScopeWindow.cpp src/ScopeWindow.h
         resources/app_resources.qrc
         Firmware/ClearCoreFirmware/Hpgl.cpp
         Firmware/ClearCoreFirmware/HpglChannel.cpp
@@ -102,6 +118,18 @@ if (CLEARHPGL_BUILD_TESTS)
     qt_add_executable(dxf_probe tests/dxf_probe.cpp src/DxfImport.cpp src/DxfImport.h)
     target_include_directories(dxf_probe PRIVATE src)
     target_link_libraries(dxf_probe PRIVATE Qt6::Core Qt6::Gui)
+endif()
+if (CLEARHPGL_BUILD_TESTS)
+    # The ClearPath scope link against a real servo on its own USB port (never enables or moves it):
+    # scope_hw COM12 [seconds] [monitor variable id], or "Simulated motor"
+    qt_add_executable(scope_hw tests/scope_hw.cpp src/ClearPathLink.h src/ClearPathLink.cpp)
+    target_include_directories(scope_hw PRIVATE src)
+    target_link_libraries(scope_hw PRIVATE Qt6::Core Qt6::SerialPort)
+    # Plotter > Update board firmware through the app's code, on a real ClearCore over USB:
+    # fw_update survey | fw_update update COM3
+    qt_add_executable(fw_update tests/fw_update.cpp src/FirmwareUpdate.h src/FirmwareUpdate.cpp)
+    target_include_directories(fw_update PRIVATE src)
+    target_link_libraries(fw_update PRIVATE Qt6::Core Qt6::SerialPort)
 endif()
 if (CLEARHPGL_BUILD_TESTS)
     # test_dxf_arcs: DXF arcs go out as AA and the firmware interpreter draws them where the strips are

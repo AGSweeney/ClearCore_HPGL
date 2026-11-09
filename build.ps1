@@ -218,6 +218,22 @@ if (-not $SkipDeploy) {
     } else {
         Write-Warning "MSVC runtime DLLs not found under $vsRoot\VC\Redist; ship vc_redist.x64.exe instead."
     }
+
+    # The firmware and its flasher go with the app for Plotter > Update board firmware
+    # (src/FirmwareUpdate.cpp looks in firmware\ next to the exe first).
+    $fwSrc = Join-Path $SourceDir "Firmware\ClearCoreFirmware\Release"
+    $fwBin = Join-Path $fwSrc "ClearHPGL_Firmware.bin"
+    $fwDst = Join-Path (Split-Path -Parent $appExe) "firmware"
+    if (Test-Path -LiteralPath $fwBin) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $fwDst "bossac") | Out-Null
+        Copy-Item -LiteralPath $fwBin -Destination $fwDst -Force
+        $fwUf2 = Join-Path $fwSrc "ClearHPGL_Firmware.uf2"
+        if (Test-Path -LiteralPath $fwUf2) { Copy-Item -LiteralPath $fwUf2 -Destination $fwDst -Force }
+        Copy-Item -LiteralPath (Join-Path $SourceDir "tools\bossac\bossac.exe") -Destination (Join-Path $fwDst "bossac") -Force
+        Write-Host "Copied the firmware and bossac to $fwDst"
+    } else {
+        Write-Warning "No firmware at $fwBin (run Firmware\build.ps1 first); the app's firmware update will say so."
+    }
 } else {
     Write-Host "Skipping windeployqt (-SkipDeploy)."
 }
@@ -241,13 +257,13 @@ if ($Install) {
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
     # Mirror the deployed folder (removes files a newer build no longer ships); skip debug symbols,
     # the test programs and the redistributable installer (the CRT DLLs are already app-local).
-    & robocopy (Split-Path -Parent $appExe) $InstallDir /MIR /XF *.pdb *.ilk dxf_probe.exe render_settings_dialog.exe test_plotterlink.exe vc_redist.x64.exe /NFL /NDL /NJH /NJS /NP | Out-Null
+    & robocopy (Split-Path -Parent $appExe) $InstallDir /MIR /XF *.pdb *.ilk dxf_probe.exe render_settings_dialog.exe test_plotterlink.exe test_dxf_arcs.exe scope_hw.exe vc_redist.x64.exe /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) {
         throw "Copying to $InstallDir failed (robocopy exit code $LASTEXITCODE)."
     }
     $global:LASTEXITCODE = 0
     # /MIR leaves excluded names alone in the destination, so drop any left by an older install.
-    foreach ($extra in @("dxf_probe.exe", "render_settings_dialog.exe", "test_plotterlink.exe", "vc_redist.x64.exe")) {
+    foreach ($extra in @("dxf_probe.exe", "render_settings_dialog.exe", "test_plotterlink.exe", "test_dxf_arcs.exe", "scope_hw.exe", "vc_redist.x64.exe")) {
         Remove-Item -LiteralPath (Join-Path $InstallDir $extra) -Force -ErrorAction SilentlyContinue
     }
     $startMenu = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)) "ClearHPGL.lnk"

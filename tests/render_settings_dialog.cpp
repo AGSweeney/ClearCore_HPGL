@@ -4,7 +4,9 @@
 //   render_settings_dialog <config.txt> <out.png>
 // config.txt holds the console's "config" reply (one "key = value  help" per line).
 
+#include "FirmwareDialog.h"
 #include "MainWindow.h"
+#include "ScopeWindow.h"
 #include "PlotterSettingsDialog.h"
 #include "HpglPreview.h"
 
@@ -38,6 +40,44 @@ int main(int argc, char **argv) {
         std::printf("strokes=%d drawn=%.0f mm  pen-up travel=%.0f mm  extent X %.1f..%.1f  Y %.1f..%.1f mm  unknown=%u error=%d\n",
                     int(r.cutStripsMm.size()), r.drawLengthMm, r.travelLengthMm, x0, x1, y0, y1, r.unknownInstructions, r.lastError);
         return 0;
+    }
+    if (QString::fromLocal8Bit(argv[1]) == QLatin1String("--scope")) {
+        /* ClearPath scope on its simulated motor, recording for a few seconds: --scope <out.png> [help.png] */
+        ScopeWindow w;
+        w.resize(1400, 860);
+        w.show();
+        w.startSimulated(1);
+        QElapsedTimer t;
+        t.start();
+        while (t.elapsed() < 4000) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        }
+        const bool ok = w.grab().save(QString::fromLocal8Bit(argv[2]));
+        if (argc > 3) {
+            w.ShowHelp();
+            t.restart();
+            while (t.elapsed() < 800) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            }
+            if (!w.helpDialog() || !w.helpDialog()->grab().save(QString::fromLocal8Bit(argv[3]))) {
+                return 1;
+            }
+        }
+        w.stopAndDisconnect();
+        return ok ? 0 : 1;
+    }
+    if (QString::fromLocal8Bit(argv[1]) == QLatin1String("--firmware")) {
+        /* Plotter > Update board firmware, after it has read the board on USB: --firmware <out.png> */
+        MainWindow parent;
+        FirmwareDialog d(&parent);
+        d.resize(720, 520);
+        d.show();
+        QElapsedTimer t;
+        t.start();
+        while (t.elapsed() < 6000) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        }
+        return d.grab().save(QString::fromLocal8Bit(argv[2])) ? 0 : 1;
     }
     if (QString::fromLocal8Bit(argv[1]) == QLatin1String("--main")) {
         /* Main window at its default size, after the first layout pass (initial splitter sizes). */

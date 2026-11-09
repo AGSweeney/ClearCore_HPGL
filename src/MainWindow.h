@@ -56,6 +56,10 @@ private slots:
     void GotoTarget();
     void Jog(double dxMm, double dyMm);
     void ShowPlotterSettings();
+    // Plotter > Update board firmware: the ClearCore over USB (FirmwareDialog).
+    void OpenFirmwareUpdate();
+    // Plotter > ClearPath scope: the servos over their own USB ports (ScopeWindow).
+    void OpenClearPathScope();
     void ExportHpgl();
     void SaveDxfGeometryAs();
     void OnPathIssueQuickFixCloseContour(int stripIndex);
@@ -112,6 +116,7 @@ private:
     void SaveWindowUiSettings();
 
     PlotterLink m_link;
+    class ScopeWindow *m_scope = nullptr;  // a top-level window, kept once opened
 
     // Connection
     QComboBox *m_transportCombo = nullptr;

@@ -1,0 +1,102 @@
+<h1>ClearPath scope</h1>
+<p><b>Plotter › ClearPath scope…</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>) records a ClearPath MC/SD through the
+motor's own USB port (the port ClearPath-MSP uses) and shows its signals stacked on one time axis: what the
+X and Y servos actually do while the plotter draws. It does not use the ClearCore, so it runs during a plot.</p>
+<p align="center"><img src="images/scope_overview.png" width="820"></p>
+<p class="caption">The default lanes, the critical concerns: tracking error, velocity, bus voltage, drive temperature, HLFB, enable and alerts.</p>
+
+<h2><a name="connect"></a>Getting connected</h2>
+<ol>
+<li>Plug the motor's USB into the PC. It shows in <b>Motor</b> as <i>ClearPath on COMn</i>.</li>
+<li><b>Close ClearPath-MSP</b> first: only one program can own the port.</li>
+<li><b>Connect</b>, then <b>Start</b>. <b>Stop</b> ends the recording; <b>Disconnect</b> releases the port.</li>
+</ol>
+<p>With more than one motor on USB, the list shows each by its COM port. Connecting shows the drive's serial number, so you can tell which motor it is.</p>
+
+<h2><a name="motors"></a>Several motors at once</h2>
+<p>Up to four motors record together on one time axis, each through its own USB port. <b>Connect all</b> connects
+every ClearPath in the list, or pick one and <b>Connect</b>, then pick another and <b>Add</b>. <b>Start</b> records
+them all; <b>Disconnect</b> releases them all.</p>
+<ul>
+<li>A <b>Motors</b> row appears with a box for each. Type a name, such as <i>M-0 Carriage</i>: it shows on that motor's
+lanes, and stays with the drive by its serial number, so it survives a change of COM port. The app can't tell
+which connector a drive is on, so the name is how you know.</li>
+<li>Each motor gets its own lanes in <b>Lanes</b>, beside the same signal on the other motors. Only its fast signal
+starts on. Each motor streams one fast signal; a second one is read in turn, more slowly.</li>
+<li><b>Overlay</b> draws two motors in one lane, and the trigger can watch any motor's lane and capture them all.</li>
+<li><b>Save CSV</b> writes every motor into one file, with its name on each signal.</li>
+</ul>
+<p class="note">The drives share no clock, so samples are lined up by when they reach the PC. On the bench that held
+to about 1 ms between motors, with no drift over two minutes. That shows how motors move together; it is not for
+measuring a delay of a millisecond or two between them.</p>
+<p class="note">No motor? Pick <b>Simulated motor</b>: it speaks the same protocol and runs a repeating motion.</p>
+
+<h2><a name="signals"></a>What the motor can give</h2>
+<table>
+<tr><th>Kind</th><th>Rate</th><th>Signals</th></tr>
+<tr><td>Streamed</td><td>about 845 / s</td><td>one monitor variable at a time: position error (default), velocity, torque, torque utilization, bus voltage</td></tr>
+<tr><td>Registers</td><td>about 10 / s each</td><td>velocity, position error, measured position, bus voltage, drive temperature</td></tr>
+<tr><td>Digital</td><td>about 845 / s</td><td>HLFB and Enable, carried in every stream sample</td></tr>
+<tr><td>Alert</td><td>about 2 / s</td><td>whether the alert register is non-zero; the names show in the status row</td></tr>
+</table>
+<p>The motor streams <b>one</b> fast signal, so only one "stream, fast" lane can be on. Position error is in
+encoder counts and velocity in RPM; other streamed signals are in raw monitor units. The bus voltage scale,
+HLFB and Enable are provisional (from our USB captures).</p>
+
+<h2><a name="lanes"></a>Lanes</h2>
+<p align="center"><img src="images/scope_lanes.png" width="820"></p>
+<p class="caption">The Lanes settings: which signals show, their order, colour and scale.</p>
+<p><b>Lanes</b> opens the lane settings: tick a signal to show it, <b>Up</b> / <b>Down</b> for the order, click the
+swatch for its colour, and <b>Auto</b> or <b>Fixed</b> scale with min and max. Everything is saved.</p>
+<h3>Overlay</h3>
+<p><b>Overlay</b> draws a signal in the lane above it. Signals in one unit share a scale; otherwise each keeps its
+own, with its scale labels in its colour.</p>
+<p align="center"><img src="images/scope_overlay.png" width="820"></p>
+<p class="caption">Velocity overlaid on the tracking error: the error rises with each acceleration.</p>
+
+<h2><a name="reading"></a>Reading the traces</h2>
+<ul>
+<li><b>Hover</b>: every lane shows its value at that moment, and the time axis the time.</li>
+<li><b>Freeze</b> holds the view while recording carries on (a badge shows in the status row).</li>
+<li><b>Save CSV…</b> writes everything recorded (the last two minutes): time, signal, value, unit.</li>
+</ul>
+
+<h2><a name="zoom"></a>Zoom and pan</h2>
+<p>Zoom changes the <b>timebase</b> (the <b>Window</b> box: seconds across, 10 ms to 120 s). Stopped or frozen it
+zooms about the mouse; live, the right edge stays on the newest data.</p>
+<table>
+<tr><td><kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd> <kbd>+</kbd> / <kbd>&minus;</kbd></td><td>zoom</td></tr>
+<tr><td>middle-drag, <kbd>Shift</kbd>+wheel</td><td>pan through time (a live view freezes)</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>0</kbd></td><td>fit everything recorded</td></tr>
+</table>
+
+<h2><a name="trigger"></a>Trigger</h2>
+<p>A trigger holds the screen on a repeating moment, so each machine cycle stands still for comparing.</p>
+<p align="center"><img src="images/scope_trigger.png" width="820"></p>
+<p class="caption">Normal trigger on the tracking error rising through 0, at 20 % of the screen: the dashed orange line is the moment, the level is marked in its lane, and the time axis reads from the trigger (T).</p>
+<table>
+<tr><td><b>Off</b></td><td>roll, as without a trigger</td></tr>
+<tr><td><b>Auto</b></td><td>hold each capture; roll live when nothing triggers for a sweep</td></tr>
+<tr><td><b>Normal</b></td><td>hold the latest capture and re-arm after each</td></tr>
+<tr><td><b>Single</b></td><td>one capture, then wait for <b>Arm</b></td></tr>
+</table>
+<p>Choose the <b>source</b> (any lane that is on, HLFB and Enable too), the <b>edge</b> and the <b>level</b>
+(<b>50 %</b> puts it in the middle of the source's range on screen). <b>at</b> is where the trigger sits across the
+screen. Noise at the level cannot re-trigger (2 % hysteresis). Change a setting while stopped and the whole
+recording is searched again.</p>
+<p><b>Example:</b> to see the tracking error of every move of a pusher, trigger <b>Normal</b> on <b>HLFB</b>,
+<b>↓ falling</b> (HLFB drops when a move starts), at <b>10 %</b>, with a timebase a little longer than the move.</p>
+
+<h2><a name="motor"></a>What the scope does to the motor</h2>
+<p>Start sets the motor's <b>working</b> monitor channel 1 to the streamed signal and speeds the link to 230400
+baud; Stop puts channel 1 back exactly as it was and returns the link to 9600 baud. Nothing is saved to the
+motor, and the scope never enables or moves it. <b>Clear E-stop</b> clears the motor's EStopped alert when it is
+set.</p>
+
+<h2><a name="trouble"></a>When something is wrong</h2>
+<ul>
+<li><b>No ClearPath found</b>: check the motor's USB cable and power; <b>Refresh</b>.</li>
+<li><b>No reply to set-address</b>: ClearPath-MSP (or another program) still has the port open.</li>
+<li><b>Fewer than 845 samples/s</b> in the status line: another program is busy on the USB, or the cable is poor.</li>
+<li>The scope disconnects after five failed reads in a row; connect again.</li>
+</ul>

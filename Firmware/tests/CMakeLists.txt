@@ -40,7 +40,20 @@ if (MSVC)
     target_compile_definitions(test_arc PRIVATE _USE_MATH_DEFINES)
 endif()
 
+# libClearCore's CoreXY kinematics (CoordinatedKinematics.h) through the interpolators
+add_executable(test_corexy
+    ${LCC_DIR}/tests/host/corexy_kinematics_test.cpp
+    ${LCC_DIR}/src/ArcInterpolator.cpp
+    ${LCC_DIR}/src/LinearInterpolator.cpp
+    ${LCC_DIR}/src/TrigLUT.cpp
+)
+target_include_directories(test_corexy PRIVATE ${LCC_DIR}/tests/host/stub ${LCC_DIR}/inc ${LCC_DIR}/src)
+if (MSVC)
+    target_compile_definitions(test_corexy PRIVATE _USE_MATH_DEFINES)
+endif()
+
 enable_testing()
 add_test(NAME test_hpgl COMMAND test_hpgl)
 add_test(NAME test_interp COMMAND test_interp)
 add_test(NAME test_arc COMMAND test_arc)
+add_test(NAME test_corexy COMMAND test_corexy)

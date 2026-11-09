@@ -147,6 +147,16 @@
 #define MEMP_NUM_TCP_PCB_LISTEN 8
 #endif
 
+// <o> The number of UDP protocol control blocks<1-1000>
+// <i> One per UDP socket: DHCP holds one while it runs, DNS one only during a lookup. An EtherNet/IP
+// <i> adapter (QuickEIP) takes two (44818, 2222); with an application UDP port that is 4, lwIP's default,
+// <i> so this leaves room for two more.
+// <i> Default: 6
+// <id> lwip_memp_num_udp_pcb
+#ifndef MEMP_NUM_UDP_PCB
+#define MEMP_NUM_UDP_PCB 6
+#endif
+
 // <o> the number of simultaneously queued TCP segments<0-1000>
 // <i> the number of simultaneously queued TCP segments
 // <i> Default: 16
@@ -390,7 +400,7 @@
 // <q> Enables statistics collection in lwip_stats
 // <id> lwip_stats
 #ifndef LWIP_STATS
-#define LWIP_STATS 0
+#define LWIP_STATS 1 /* for the heap and pool counters below (MEM_STATS follows from it); the per-protocol counters stay off */
 #endif
 
 // <q> Compile in the statistics output functions
@@ -450,7 +460,7 @@
 // <q> Enable memp.c stats
 // <id> lwip_memp_stats
 #ifndef MEMP_STATS
-#define MEMP_STATS 0
+#define MEMP_STATS 1 /* pool use, high water and allocation failures, readable in lwip_stats.memp[] */
 #endif
 
 // <q> Enable system stats

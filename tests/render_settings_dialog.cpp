@@ -42,18 +42,29 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (QString::fromLocal8Bit(argv[1]) == QLatin1String("--scope")) {
-        /* ClearPath scope on its simulated motor, recording for a few seconds: --scope <out.png> [help.png] */
+        /* ClearPath scope on simulated motors, recording for a few seconds:
+         * --scope <out.png> [help.png | -] [motors] */
         ScopeWindow w;
         w.resize(1400, 860);
         w.show();
-        w.startSimulated(1);
+        w.startSimulated(argc > 4 ? atoi(argv[4]) : 1);
+        {
+            /* Every motor's alert lane on (a second motor starts with only its fast signal). */
+            std::vector<scope::Lane> lanes = w.lanes();
+            for (scope::Lane &l : lanes) {
+                if (scope::BaseKey(l.key) == QLatin1String("dig.alert")) {
+                    l.on = true;
+                }
+            }
+            w.setLanes(lanes);
+        }
         QElapsedTimer t;
         t.start();
         while (t.elapsed() < 4000) {
             QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
         }
         const bool ok = w.grab().save(QString::fromLocal8Bit(argv[2]));
-        if (argc > 3) {
+        if (argc > 3 && QString::fromLocal8Bit(argv[3]) != QLatin1String("-")) {
             w.ShowHelp();
             t.restart();
             while (t.elapsed() < 800) {

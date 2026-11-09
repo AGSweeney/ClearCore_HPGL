@@ -875,7 +875,8 @@ protected:
             auto valueText = [&](const Member &m, double v) {
                 if (std::isnan(v)) return QStringLiteral("—");
                 if (digital) {
-                    const bool alert = m.l->key == QLatin1String("dig.alert");
+                    // By the signal, not the lane: a second motor's lane is "m1/dig.alert".
+                    const bool alert = BaseKey(m.l->key) == QLatin1String("dig.alert");
                     return v > 0.5 ? (alert ? QStringLiteral("ALERT") : QStringLiteral("on"))
                                    : (alert ? QStringLiteral("none") : QStringLiteral("off"));
                 }

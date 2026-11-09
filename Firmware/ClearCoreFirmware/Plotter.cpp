@@ -287,6 +287,7 @@ static double g_tripAtMm[SW_COUNT] = {0};
 static char g_limitMsg[48];
 static SwitchEvent g_lastStop;
 static bool g_haveLastStop = false;
+static uint32_t g_stopCount = 0;  /* every switch stop: a host sees each one, even after jog stop */
 
 static bool SwitchMotionBusy() {
     return g_homePhase != HOME_NONE || g_jogOn || g_jogStopping || g_pendingJog;
@@ -1036,6 +1037,7 @@ static bool MoveAxisSteps(int axis, int32_t delta, double mmPerS) {
 static void NoteStop(const SwitchEvent &e) {
     g_lastStop = e;
     g_haveLastStop = true;
+    g_stopCount++;
     if (e.limit && e.sw >= 0 && e.sw < SW_COUNT) {
         g_trips[e.sw]++;
         g_tripAtMm[e.sw] = EdgeMm(e, SwitchAxis(e.sw));
@@ -1533,11 +1535,11 @@ void PlotterSwitchInfo(void (*out)(const char *line)) {
     out(buf);
     if (g_haveLastStop) {
         const SwitchEvent &e = g_lastStop;
-        snprintf(buf, sizeof(buf), "laststop kind=%s switch=%s input=%s x=%.3f y=%.3f",
-                 e.limit ? "limit" : (e.sw < 0 ? "input" : (e.released ? "release" : "trip")),
+        snprintf(buf, sizeof(buf), "laststop n=%lu kind=%s switch=%s input=%s x=%.3f y=%.3f",
+                 (unsigned long)g_stopCount, e.limit ? "limit" : (e.sw < 0 ? "input" : (e.released ? "release" : "trip")),
                  e.sw >= 0 ? kKey[e.sw] : "none", InputName(e.input), e.x / g_axSpm[0], e.y / g_axSpm[1]);
     } else {
-        snprintf(buf, sizeof(buf), "laststop kind=none");
+        snprintf(buf, sizeof(buf), "laststop n=0 kind=none");
     }
     out(buf);
     const char *state = "idle";

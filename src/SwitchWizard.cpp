@@ -565,8 +565,10 @@ void SwitchWizard::onCommand(const QString &command, bool ok, const QStringList 
         m_jogDir = 0;
         m_jogTimer->stop();
         if (m.hasMatch()) {
+            Q_UNUSED(dir);
             send(QStringLiteral("jog stop"));
-            feedStop(dir, m.captured(1));
+            send(QStringLiteral("swinfo"));  // the stop is read from its laststop line
+            refresh();
             return;
         }
         if (m_step == kStepLimits) m_limNote = why;
@@ -668,6 +670,29 @@ void SwitchWizard::startJog(int dir) {
         refresh();
         return;
     }
+    // No limit is on the plotter yet in this step: a limit that reads tripped is not a stop for this jog,
+    // so never jog further into it. Off it is the way that did not reach it.
+    if (m_step == kStepDirection) {
+        for (int s : {int(kPlus), int(kMinus)}) {
+            const Found &f = m_found[s];
+            if (!f.wanted || f.input < 0 || m_levels < 0) continue;
+            const bool tripped = ((m_levels >> f.input) & 1) != (f.restHigh ? 1 : 0);
+            if (!tripped) continue;
+            if (m_limitHitDir[s] == 0) {
+                m_dirNote = QStringLiteral("The %1 switch (%2) reads tripped, and it is not known which way is off it. "
+                                           "Disable the motors and move the axis off it by hand.")
+                                .arg(switchName(s), InputName(f.input));
+                refresh();
+                return;
+            }
+            if (dir == m_limitHitDir[s]) {
+                m_dirNote = QStringLiteral("The %1 switch (%2) is tripped: jog the other way.").arg(switchName(s), InputName(f.input));
+                refresh();
+                return;
+            }
+        }
+    }
+    m_lastJogDir = dir;
     m_jogDir = dir;
     m_dirNote.clear();
     m_limNote.clear();
@@ -700,6 +725,7 @@ void SwitchWizard::feedStop(int dir, const QString &input) {
         if (m_found[s].wanted && InputName(m_found[s].input) == input) reached = s;
     }
     const QString way = dir > 0 ? QStringLiteral("+") : QStringLiteral("−");
+    if (reached == kPlus || reached == kMinus) m_limitHitDir[reached] = dir;
     switch (Judge(dir, reached)) {
         case Verdict::Right:
             m_found[reached].proved = true;
@@ -731,6 +757,7 @@ void SwitchWizard::answer(bool motorReversed) {
         std::swap(m_found[kPlus].input, m_found[kMinus].input);
         std::swap(m_found[kPlus].restHigh, m_found[kMinus].restHigh);
         std::swap(m_found[kPlus].normallyOpen, m_found[kMinus].normallyOpen);
+        std::swap(m_limitHitDir[kPlus], m_limitHitDir[kMinus]);
         m_found[dir > 0 ? kPlus : kMinus].proved = true;
         m_found[dir > 0 ? kMinus : kPlus].proved = false;
         m_dirNote = QStringLiteral("The + and − switches were the other way round: swapped.");
@@ -739,6 +766,7 @@ void SwitchWizard::answer(bool motorReversed) {
     }
     m_dir = -m_dir;
     for (Found &f : m_found) f.proved = false;
+    for (int &d : m_limitHitDir) d = -d;  // the same physical way is the other sign now
     m_seenHomeSide = 0;
     send(QStringLiteral("disable"));
     send(QStringLiteral("set dir_%1 %2").arg(axisKey()).arg(m_dir));
@@ -812,6 +840,7 @@ void SwitchWizard::feedSwinfo(const QStringList &lines) {
     static const QRegularExpression kSwitch(QStringLiteral(
         "^switch (\\S+) input=(\\S+) open=(\\d) tripped=(\\d) trips=(\\d+) at=(-?[0-9.]+)"));
     static const QRegularExpression kPos(QStringLiteral("^pos x=(-?[0-9.]+) y=(-?[0-9.]+) moving=(\\d)"));
+    static const QRegularExpression kLastStop(QStringLiteral("^laststop n=(\\d+) kind=(\\S+)(?: switch=\\S+ input=(\\S+))?"));
     static const QRegularExpression kHomeLine(QStringLiteral(
         "^home mode=\\d+ state=(\\S+) homed=(\\d+) x_ends=(\\d+) x_latch=(-?[0-9.]+) y_ends=(\\d+) "
         "y_latch=(-?[0-9.]+) last=(.*)$"));
@@ -830,6 +859,26 @@ void SwitchWizard::feedSwinfo(const QStringList &lines) {
                     trips[s] = m.captured(5).toUInt();
                     at[s] = m.captured(6).toDouble();
                     haveLimits = true;
+                }
+            }
+            continue;
+        }
+        m = kLastStop.match(l);
+        if (m.hasMatch()) {
+            const quint32 n = m.captured(1).toUInt();
+            if (!m_stopCountKnown) {
+                m_stopCountKnown = true;
+                m_stopCount = n;
+            } else if (n != m_stopCount) {
+                m_stopCount = n;
+                // A stop-on input stopped a jog (even one already let go): Direction judges it.
+                if (m.captured(2) == QLatin1String("input") && m_step == kStepDirection && m_lastJogDir != 0) {
+                    if (m_jogDir != 0) {
+                        m_jogDir = 0;
+                        m_jogTimer->stop();
+                        send(QStringLiteral("jog stop"));
+                    }
+                    feedStop(m_lastJogDir, m.captured(3));
                 }
             }
             continue;

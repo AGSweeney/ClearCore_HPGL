@@ -285,7 +285,9 @@ void PlotterLink::handleConsoleLine(const QString &line) {
         parseTelemetryLine(line);  /* pushed by the board; may arrive inside a command reply */
         return;
     }
-    if (line.contains(QLatin1String("state=")) || line.contains(QLatin1String("source="))) {
+    /* Only the two lines of "status": swinfo's "home mode=1 state=idle ..." is not one (it has no
+     * enabled= and would read as motors off at 0,0). */
+    if (line.startsWith(QLatin1String("state=")) || line.startsWith(QLatin1String("source="))) {
         parseStatusLine(line);
     }
     if (!m_cmdActive) {

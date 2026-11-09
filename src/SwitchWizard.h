@@ -131,6 +131,10 @@ private:
     int m_jogDir = 0;
     int m_seenHomeSide = 0;
     int m_askDir = 0;
+    int m_lastJogDir = 0;                 // the direction of the last jog started
+    bool m_stopCountKnown = false;
+    quint32 m_stopCount = 0;              // swinfo's laststop n: a new stop when it changes
+    int m_limitHitDir[2] = {0, 0};        // the jog direction that reached each limit
     int m_dir = 1;            // dir_x / dir_y as the plotter has it
     QString m_dirNote;
     // Limits

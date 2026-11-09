@@ -58,6 +58,23 @@ The update keeps all settings of the board: the plot area, the speeds, and
 the network address. They are in a part of the memory that the update does
 not erase. The update does not start while a job plots.
 
+\section{Flash Without the App}\label{sec:fw-cmd}
+
+The installer also puts a flash tool in the \file{firmware} directory of the
+app. Use it if the app cannot run.
+
+\begin{procedure}{Flash the firmware from the Start menu}
+\begin{enumerate}
+  \item Connect the ClearCore to the computer with the USB cable.
+  \item Close the ClearHPGL app. It can hold the USB port.
+  \item Select \menu{ClearHPGL\,>\,Flash the ClearCore firmware (USB)} in the
+        Start menu.
+  \item Wait until the window shows \code{Success!}, then press a key.
+\end{enumerate}
+\end{procedure}
+
+This also keeps the settings of the board.
+
 \begin{note}
 \notelabel If the update stops (for example, the cable is disconnected), the
 board can have no firmware. Push the reset button of the ClearCore two times

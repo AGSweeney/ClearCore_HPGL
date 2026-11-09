@@ -70,6 +70,9 @@ struct PlotterSettings {
     uint8_t kinematics;  /* 0 Cartesian (M0 = X, M1 = Y), 1 CoreXY / H-bot (M0 = A, M1 = B) */
     uint8_t swapXy;      /* 1 exchange the X and Y axes (with dir: any belt or motor layout) */
     float motorMaxMmS;   /* highest motor speed as belt travel (mm/s); 0 = no limit */
+
+    /* Added in version 5. */
+    float pulleyDiaMm;   /* CoreXY: pulley pitch diameter, both motors (travel per rev = pi x this) */
     uint32_t checksum;
 };
 #pragma pack(pop)

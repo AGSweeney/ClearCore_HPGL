@@ -13,7 +13,9 @@
 /* User-page blob. Magic differs from ClearAI ('CAIC') and ClearCoreROS ('CROS')
  * so a blob left by either is ignored instead of misread. */
 static const uint32_t CHPGL_NVM_MAGIC = 0x47504843u; /* 'CHPG' */
-static const uint16_t CHPGL_NVM_VERSION = 4;
+static const uint16_t CHPGL_NVM_VERSION = 5;
+/* 20-tooth GT2 pulley: 40 mm of belt per revolution. */
+static const float kDefaultPulleyDiaMm = 12.7324f;
 
 static_assert(sizeof(PlotterSettings) <= ClearCore::NvmManager::NVM_LOC_RESERVED_TEKNIC,
               "settings blob must fit below the Teknic reserved area");
@@ -69,6 +71,7 @@ void SettingsDefaults() {
     g_settings.kinematics = 0;
     g_settings.swapXy = 0;
     g_settings.motorMaxMmS = 0.0f;
+    g_settings.pulleyDiaMm = kDefaultPulleyDiaMm;
     g_settings.hlfbCheck = 1;
     g_settings.comPort = 0;
     g_settings.comBaud = 9600;
@@ -142,6 +145,7 @@ void SettingsLoad() {
         offsetof(PlotterSettings, optimize),  /* version 1 */
         offsetof(PlotterSettings, jobSpeed),  /* version 2 */
         offsetof(PlotterSettings, kinematics),  /* version 3 */
+        offsetof(PlotterSettings, pulleyDiaMm),  /* version 4 */
     };
     if (s.magic == CHPGL_NVM_MAGIC && s.version >= 1 && s.version < CHPGL_NVM_VERSION &&
         s.size == kFieldsEnd[s.version] + 4) {
@@ -160,9 +164,12 @@ void SettingsLoad() {
             if (s.version < 3) {
                 s.jobSpeed = 1;
             }
-            s.kinematics = 0;
-            s.swapXy = 0;
-            s.motorMaxMmS = 0.0f;
+            if (s.version < 4) {
+                s.kinematics = 0;
+                s.swapXy = 0;
+                s.motorMaxMmS = 0.0f;
+            }
+            s.pulleyDiaMm = kDefaultPulleyDiaMm;
             s.version = CHPGL_NVM_VERSION;
             s.size = sizeof(PlotterSettings);
             s.checksum = Checksum(&s);
@@ -217,10 +224,19 @@ bool SettingsFromNvm() {
 }
 
 double SettingsStepsPerMm(uint8_t axis) {
-    if (axis > 1 || g_settings.mmPerRev[axis] <= 0.0f) {
+    if (axis > 1) {
         return 1.0;
     }
-    return (double)g_settings.stepsPerRev[axis] / (double)g_settings.mmPerRev[axis];
+    /* CoreXY: both belts run on pulleys of pulley_dia_mm (pitch diameter). One step of either
+     * belt moves the head one step's worth of belt in X and in Y, so steps/mm of the head is
+     * steps/mm of the belt: steps per rev / (pi x pitch diameter). mm_rev_x/y are not used. */
+    const double mmPerRev = (g_settings.kinematics == 1)
+                                ? 3.14159265358979323846 * (double)g_settings.pulleyDiaMm
+                                : (double)g_settings.mmPerRev[axis];
+    if (mmPerRev <= 0.0) {
+        return 1.0;
+    }
+    return (double)g_settings.stepsPerRev[axis] / mmPerRev;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -248,13 +264,15 @@ struct KeyDef {
 #define OFS(f) ((uint16_t)offsetof(PlotterSettings, f))
 
 static const KeyDef kKeys[] = {
-    {"steps_rev_x", K_U32, OFS(stepsPerRev[0]), 1, 1000000, KF_DISABLED, "X motor steps per revolution"},
-    {"steps_rev_y", K_U32, OFS(stepsPerRev[1]), 1, 1000000, KF_DISABLED, "Y motor steps per revolution"},
-    {"mm_rev_x", K_F32, OFS(mmPerRev[0]), 0.001, 10000, KF_DISABLED, "X travel per motor revolution (mm)"},
-    {"mm_rev_y", K_F32, OFS(mmPerRev[1]), 0.001, 10000, KF_DISABLED, "Y travel per motor revolution (mm)"},
+    /* Kinematics first: it decides which of the mechanics settings below apply. */
+    {"kinematics", K_U8, OFS(kinematics), 0, 1, KF_DISABLED, "0 Cartesian (M0 X, M1 Y), 1 CoreXY/H-bot (M0 A, M1 B)"},
+    {"steps_rev_x", K_U32, OFS(stepsPerRev[0]), 1, 1000000, KF_DISABLED, "M0 motor steps per revolution"},
+    {"steps_rev_y", K_U32, OFS(stepsPerRev[1]), 1, 1000000, KF_DISABLED, "M1 motor steps per revolution"},
+    {"mm_rev_x", K_F32, OFS(mmPerRev[0]), 0.001, 10000, KF_DISABLED, "X travel per motor revolution (mm), Cartesian"},
+    {"mm_rev_y", K_F32, OFS(mmPerRev[1]), 0.001, 10000, KF_DISABLED, "Y travel per motor revolution (mm), Cartesian"},
+    {"pulley_dia_mm", K_F32, OFS(pulleyDiaMm), 0.1, 1000, KF_DISABLED, "pulley pitch diameter (mm), CoreXY, both motors"},
     {"dir_x", K_I8, OFS(dir[0]), -1, 1, KF_DISABLED, "1 or -1: flip X"},
     {"dir_y", K_I8, OFS(dir[1]), -1, 1, KF_DISABLED, "1 or -1: flip Y"},
-    {"kinematics", K_U8, OFS(kinematics), 0, 1, KF_DISABLED, "0 Cartesian (M0 X, M1 Y), 1 CoreXY/H-bot (M0 A, M1 B)"},
     {"swap_xy", K_U8, OFS(swapXy), 0, 1, KF_DISABLED, "1 = exchange the X and Y axes"},
     /* The plot area is only the hard clip: it can change with the motors enabled, but not mid-job. */
     {"width_mm", K_F32, OFS(areaMm[0]), 1, 100000, KF_IDLE, "plot area X (hard clip)"},
@@ -445,14 +463,11 @@ const char *SettingsSet(const char *key, const char *value, bool motorsEnabled, 
                 break;
         }
     }
-    /* CoreXY: one Cartesian step is one step of belt, so both motors need the same scale. */
-    if (g_settings.kinematics == 1) {
-        const double sx = SettingsStepsPerMm(0);
-        const double sy = SettingsStepsPerMm(1);
-        if ((sx > sy ? sx - sy : sy - sx) > 1e-6 * sx) {
-            g_settings = before;
-            return "CoreXY needs the same steps per mm on X and Y";
-        }
+    /* CoreXY: one Cartesian step is one step of belt, so both motors need the same scale. They
+     * share pulley_dia_mm, so that means the same steps per revolution. */
+    if (g_settings.kinematics == 1 && g_settings.stepsPerRev[0] != g_settings.stepsPerRev[1]) {
+        g_settings = before;
+        return "CoreXY needs the same steps per revolution on M0 and M1";
     }
     if (needsRestart) {
         *needsRestart = (k->flags & KF_RESTART) != 0;

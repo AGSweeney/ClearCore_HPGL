@@ -39,14 +39,15 @@ const QList<Choice> kDir = {{"1", "Normal (+1)"}, {"-1", "Reversed (-1)"}};
 const QList<Section> &Sections() {
     static const QList<Section> sections = {
         {"Machine",
-         {{"steps_rev_x", "X steps / rev", "steps", {}},
-          {"mm_rev_x", "X travel / rev", "mm", {}},
-          {"dir_x", "X direction", "", kDir},
-          {"steps_rev_y", "Y steps / rev", "steps", {}},
-          {"mm_rev_y", "Y travel / rev", "mm", {}},
-          {"dir_y", "Y direction", "", kDir},
-          {"kinematics", "Kinematics", "",
+         {{"kinematics", "Kinematics", "",
            {{"0", "Cartesian (M0 = X, M1 = Y)"}, {"1", "CoreXY / H-bot (M0 = A, M1 = B)"}}},
+          {"steps_rev_x", "M0 steps / rev", "steps", {}},
+          {"steps_rev_y", "M1 steps / rev", "steps", {}},
+          {"mm_rev_x", "X travel / rev (Cartesian)", "mm", {}},
+          {"mm_rev_y", "Y travel / rev (Cartesian)", "mm", {}},
+          {"pulley_dia_mm", "Pulley pitch diameter (CoreXY)", "mm", {}},
+          {"dir_x", "X direction", "", kDir},
+          {"dir_y", "Y direction", "", kDir},
           {"swap_xy", "Exchange X and Y", "", {{"0", "No"}, {"1", "Yes"}}},
           {"width_mm", "Plot area width", "mm", {}},
           {"height_mm", "Plot area height", "mm", {}}}},
@@ -103,6 +104,7 @@ const char *const kStyle =
     "QLineEdit, QComboBox { background: #22272e; color: #e8edf3; border: 1px solid #3d4650; border-radius: 2px;"
     " min-height: 24px; padding: 2px 8px; selection-background-color: #5a82c2; }"
     "QLineEdit:focus, QComboBox:focus { border-color: #5a82c2; }"
+    "QLineEdit:disabled { background: #2a2f36; color: #6f7885; border-color: #353c45; }"
     "QComboBox::drop-down { border: none; width: 24px; }"
     "QComboBox::down-arrow { image: url(:/icons/combo-down.svg); width: 12px; height: 8px; }"
     "QComboBox QAbstractItemView { background: #22272e; color: #e8edf3; selection-background-color: #3d5a8c;"
@@ -258,6 +260,24 @@ PlotterSettingsDialog::PlotterSettingsDialog(const QStringList &configLines, QWi
             pageLayout->addWidget(box);
         }
         addRow(otherForm, key, key, QString(), {});
+    }
+    // The mechanics fields that do not apply to the selected kinematics are greyed out:
+    // travel per revolution for CoreXY, the pulley pitch diameter for Cartesian.
+    if (m_fields.contains(QStringLiteral("kinematics")) && m_fields[QStringLiteral("kinematics")].combo) {
+        QComboBox *kin = m_fields[QStringLiteral("kinematics")].combo;
+        auto updateMechanics = [this, kin]() {
+            const bool corexy = kin->currentData().toString() == QLatin1String("1");
+            for (const char *key : {"mm_rev_x", "mm_rev_y"}) {
+                if (m_fields.value(QString::fromLatin1(key)).edit) {
+                    m_fields[QString::fromLatin1(key)].edit->setEnabled(!corexy);
+                }
+            }
+            if (m_fields.value(QStringLiteral("pulley_dia_mm")).edit) {
+                m_fields[QStringLiteral("pulley_dia_mm")].edit->setEnabled(corexy);
+            }
+        };
+        connect(kin, &QComboBox::currentIndexChanged, this, updateMechanics);
+        updateMechanics();
     }
     pageLayout->addStretch(1);
     scroll->setWidget(page);

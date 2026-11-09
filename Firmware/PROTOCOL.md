@@ -125,7 +125,7 @@ These are answered as soon as they arrive, ahead of the buffer, the way a 7475A 
 
 Pen changes happen only with XY stopped. Segments between pen changes stream through the planner with lookahead. The planner always plans to a stop at its last queued segment, so a host that falls behind costs speed, not position. Path speed and acceleration use the X scale, so keep X and Y at the same steps/mm.
 
-**CoreXY / H-bot** (`kinematics 1`): the board plans and draws in X/Y as before and sends A = X+Y to M0 and B = X-Y to M1 (in steps). X and Y must have the same steps/mm (the board refuses `kinematics 1` otherwise). A motor runs up to 1.41 times the path speed and acceleration, on 45° moves; `motor_max_mm_s` (belt mm/s, 0 = no limit) lowers the path speed of a segment so that no motor exceeds it. `corner_mm_s` limits the speed change of each motor at a corner. To match the belts and motors of the machine, use `dir_x`, `dir_y` and `swap_xy` (exchange X and Y): together they cover every layout (exchanging motors A and B mirrors Y; reversing one motor exchanges X and Y and mirrors both). Changing `kinematics` or `swap_xy` makes the present position plotter 0,0.
+**CoreXY / H-bot** (`kinematics 1`): the board plans and draws in X/Y as before and sends A = X+Y to M0 and B = X-Y to M1 (in steps). Both belts run on pulleys of pitch diameter `pulley_dia_mm` (default 12.7324 mm: a 20-tooth GT2 pulley, 40 mm of belt per revolution; pitch diameter = teeth x belt pitch / pi), so the scale is `steps_rev` / (pi x `pulley_dia_mm`) steps per mm, and `mm_rev_x`/`mm_rev_y` are not used. M0 and M1 must have the same `steps_rev` (the board refuses `kinematics 1` otherwise). A motor runs up to 1.41 times the path speed and acceleration, on 45° moves; `motor_max_mm_s` (belt mm/s, 0 = no limit) lowers the path speed of a segment so that no motor exceeds it. `corner_mm_s` limits the speed change of each motor at a corner. To match the belts and motors of the machine, use `dir_x`, `dir_y` and `swap_xy` (exchange X and Y): together they cover every layout (exchanging motors A and B mirrors Y; reversing one motor exchanges X and Y and mirrors both). Changing `kinematics` or `swap_xy` makes the present position plotter 0,0.
 
 **Faults:**
 - **DI-6 trip, motor alert or HLFB failure:** the motors disable and the rest of the job is dropped. A TCP job is closed; a serial job is discarded until its source is quiet for 2 s. The fault latches until `clear` or `enable`.
@@ -158,10 +158,11 @@ Stored in the NVM user page with magic `CHPG`, so blobs left by ClearAI (`CAIC`)
 
 | Key | Default | Applies |
 |-----|---------|---------|
-| `steps_rev_x`, `steps_rev_y` | 800 | disabled |
-| `mm_rev_x`, `mm_rev_y` | 5.0 | disabled |
+| `kinematics` | 0 Cartesian, 1 CoreXY / H-bot | disabled. First in `config`: it decides which mechanics settings apply |
+| `steps_rev_x`, `steps_rev_y` | 800 | disabled. Steps per revolution of M0 and M1 |
+| `mm_rev_x`, `mm_rev_y` | 5.0 | disabled. Cartesian only |
+| `pulley_dia_mm` | 12.7324 | disabled. CoreXY only: pulley pitch diameter, both motors |
 | `dir_x`, `dir_y` | 1 (or -1) | disabled |
-| `kinematics` | 0 Cartesian, 1 CoreXY / H-bot | disabled |
 | `swap_xy` | 0 (1 = exchange X and Y) | disabled |
 | `width_mm`, `height_mm` | 400, 300 | idle (no job running) |
 | `draw_mm_s`, `travel_mm_s`, `max_mm_s` | 100, 200, 250 | live |

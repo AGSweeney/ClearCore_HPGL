@@ -148,9 +148,17 @@ in X and Y as usual, and sends these step counts to the motors:
 \end{center}
 
 \begin{itemize}
-  \item Both motors must have the same steps per millimeter of belt. The board
-        refuses \key{kinematics}~1 if \key{steps_rev_x}/\key{mm_rev_x} and
-        \key{steps_rev_y}/\key{mm_rev_y} are different.
+  \item Both belts run on pulleys with the same pitch diameter. Set it in
+        \key{pulley_dia_mm}. The travel of the belt for one revolution is
+        $\pi$ multiplied by the pitch diameter; \key{mm_rev_x} and
+        \key{mm_rev_y} are not used. The default, \SI{12.7324}{mm}, is a
+        20-tooth GT2 pulley (\SI{40}{mm} per revolution).
+  \item The pitch diameter is the number of teeth multiplied by the belt
+        pitch, divided by $\pi$. For example, a 16-tooth GT2 pulley (2~mm
+        pitch) has a pitch diameter of 32/$\pi$ = \SI{10.186}{mm}.
+  \item Both motors must have the same steps per revolution. The board
+        refuses \key{kinematics}~1 if \key{steps_rev_x} and \key{steps_rev_y}
+        are different.
   \item On a 45° move, one motor does all the work. It turns 1.41 times faster
         than the head moves, and accelerates 1.41 times faster. Set
         \key{motor_max_mm_s} to the highest belt speed that your motors can

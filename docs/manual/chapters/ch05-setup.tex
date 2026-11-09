@@ -55,24 +55,57 @@ next to the field.
 \end{tabularx}
 \end{table}
 
-\section{Set the Mechanics}
+\section{Set the Kinematics}
 
-The board must know how far each axis moves for one revolution of its
-motor.
+Set the kinematics first. It is the first setting in \cmd{config} and in the
+app, because it selects the mechanics settings that apply.
 
 \begin{itemize}
-  \item \key{steps_rev_x}, \key{steps_rev_y}: the steps per revolution. Use
-        the input resolution that you set in ClearPath MSP. Default 800.
-  \item \key{mm_rev_x}, \key{mm_rev_y}: the travel of the axis for one
-        revolution of the motor, in mm. Default 5.0.
+  \item \key{kinematics}~0, Cartesian (default): one motor for each axis.
+        \conn{M0} moves X and \conn{M1} moves Y.
+  \item \key{kinematics}~1, CoreXY or H-bot: two belts move the head together
+        (section~\ref{sec:corexy}).
 \end{itemize}
 
-For a belt drive, the travel per revolution is the number of pulley teeth
-multiplied by the belt pitch. For example, a 20-tooth pulley with a GT2 belt
-(2~mm pitch) gives \SI{40}{mm} per revolution. For a lead screw, the travel
-per revolution is the lead of the screw.
+\begin{procedure}{Set the kinematics}
+\begin{enumerate}
+  \item Type \cmd{disable}.
+  \item Type \cmd{set kinematics 0} for a Cartesian machine, or
+        \cmd{set kinematics 1} for a CoreXY or H-bot machine. The present
+        position becomes the origin.
+\end{enumerate}
+\end{procedure}
 
-\begin{procedure}{Set the steps and the travel per revolution}
+\section{Set the Mechanics}
+
+The board must know how far the head moves for one revolution of a motor.
+
+\begin{itemize}
+  \item \key{steps_rev_x}, \key{steps_rev_y}: the steps per revolution of
+        \conn{M0} and \conn{M1}. Use the input resolution that you set in
+        ClearPath MSP. Default 800.
+  \item Cartesian: \key{mm_rev_x}, \key{mm_rev_y}: the travel of the axis for
+        one revolution of the motor, in mm. Default 5.0. For a lead screw, it
+        is the lead of the screw. For a belt, it is the number of pulley teeth
+        multiplied by the belt pitch.
+  \item CoreXY: \key{pulley_dia_mm}: the pitch diameter of the pulleys, in
+        mm, for both motors. Default \SI{12.7324}{mm} (a 20-tooth GT2 pulley).
+        The pitch diameter is the number of teeth multiplied by the belt
+        pitch, divided by $\pi$.
+\end{itemize}
+
+\begin{procedure}{Set the mechanics of a CoreXY machine}
+\begin{enumerate}
+  \item Type \cmd{disable}.
+  \item Type \cmd{set steps_rev_x 800} and \cmd{set steps_rev_y 800}. Use the
+        value from ClearPath MSP. The two values must be the same.
+  \item Type \cmd{set pulley_dia_mm 12.7324}. Use the pitch diameter of your
+        pulleys.
+  \item Type \cmd{config}, and make sure that the values are correct.
+\end{enumerate}
+\end{procedure}
+
+\begin{procedure}{Set the steps and the travel per revolution (Cartesian)}
 \begin{enumerate}
   \item Type \cmd{disable}.
   \item Type \cmd{set steps_rev_x 800}. Use the value from ClearPath MSP.
@@ -83,9 +116,10 @@ per revolution is the lead of the screw.
 \end{procedure}
 
 \begin{note}
-\notelabel Use the same steps per millimeter on X and Y. If the two axes are
-different, the speeds use the X scale, and arcs are drawn as short straight
-lines.
+\notelabel On a Cartesian machine, use the same steps per millimeter on X and
+Y. If the two axes are different, the speeds use the X scale, and arcs are
+drawn as short straight lines. On a CoreXY machine, the scales are always the
+same.
 \end{note}
 
 \section{Set the Plot Area and the Origin}
@@ -155,7 +189,8 @@ away from the ends of its travel.
 \begin{procedure}{Set the kinematics and the directions of a CoreXY machine}
 \begin{enumerate}
   \item Type \cmd{disable}.
-  \item Type \cmd{set kinematics 1}. The present position becomes the origin.
+  \item Make sure that \key{kinematics} is 1 and that the steps per
+        revolution and \key{pulley_dia_mm} are set.
   \item Type \cmd{set draw_mm_s 20} and \cmd{set travel_mm_s 20}.
   \item Type \cmd{enable}, then \cmd{goto 20 0}.
   \item Look at the movement of the head, and find it in

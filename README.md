@@ -19,6 +19,7 @@ It comes with **ClearHPGL**, an optional Windows desktop app for previewing draw
 - **Smooth, coordinated motion.** Two-axis interpolation with lookahead, so curves flow at speed instead of stopping at every vertex. True arcs, not chords.
 - **Cartesian or CoreXY.** One motor per axis, or a CoreXY / H-bot gantry (`set kinematics 1`), with each motor kept within its own speed limit.
 - **Safety in the loop.** E-stop input, servo alerts and servo ready signals stop the machine and latch a fault.
+- **Limits and homing.** Optional limit and home switches on any spare input, read in the step interrupt: a limit stops the axis with a ramp in the same 200 µs sample. Homing on switches or ClearPath hard-stop homing, optionally before every job, and a wizard that proves each switch by driving the axis to it.
 - **Desktop app.** DXF and HP-GL preview with the firmware's own interpreter, live 3D view, job monitoring and machine setup.
 
 ## How it works
@@ -60,6 +61,7 @@ Watch the [screen recording of the desktop app on YouTube](https://www.youtube.c
 | **Plot and monitor** | Over Ethernet or serial. A 3D view of the bed shows the pen live and paints what has been drawn in green; the HP-GL line being drawn is highlighted; a cycle timer records the run. Jobs sent by other programs (AutoCAD on the USB port, for example) are followed the same way. |
 | **Control** | Enable, pause, abort, jog, set origin, pen up/down, and the board's settings. |
 | **Firmware update** | **Plotter → Update board firmware** puts the firmware the app was built with on the ClearCore over USB (bootloader, write, verify, version check). The board keeps its settings. |
+| **Limits and homing** | **Plotter → Set up limits and homing** finds each switch as you trip it, reads its contact, proves its job by jogging the axis onto it, measures how far each limit lets the axis run, and homes N times to show how well homing repeats. A **Home** button and the status bar's homed / ON LIMIT readout follow. |
 | **ClearPath scope** | **Plotter → ClearPath scope** records the X and Y servos through their own USB ports while they plot: tracking error, velocity, bus voltage, temperature, HLFB, enable and alerts, with a trigger and CSV export. |
 
 ## What you need
@@ -165,7 +167,7 @@ Or open `Firmware/ClearCoreFirmware/ClearHPGL_Firmware.atsln` in Microchip Studi
 No hardware needed:
 
 ```powershell
-./Firmware/tests/run_tests.ps1                          # interpreter, input channel, job optimizer, interpolator
+./Firmware/tests/run_tests.ps1                          # interpreter, input channel, job optimizer, interpolator, switches and homing
 python Firmware/host/fake_plotter.py --bind 127.0.0.1   # stand-in board for testing the app
 ```
 

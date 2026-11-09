@@ -35,6 +35,11 @@ struct Section {
 
 const QList<Choice> kOnOff = {{"1", "On"}, {"0", "Off"}};
 const QList<Choice> kDir = {{"1", "Normal (+1)"}, {"-1", "Reversed (-1)"}};
+const QList<Choice> kInput = {{"none", "Not used"}, {"DI-7", "DI-7"}, {"DI-8", "DI-8"}, {"A-9", "A-9"},
+                              {"A-10", "A-10"}, {"A-11", "A-11"}, {"A-12", "A-12"}, {"IO-0", "IO-0"},
+                              {"IO-1", "IO-1"}, {"IO-2", "IO-2"}, {"IO-3", "IO-3"}, {"IO-4", "IO-4"},
+                              {"IO-5", "IO-5"}};
+const QList<Choice> kHomeDir = {{"-1", "Toward −"}, {"1", "Toward +"}};
 
 const QList<Section> &Sections() {
     static const QList<Section> sections = {
@@ -70,6 +75,30 @@ const QList<Section> &Sections() {
           {"z_down_steps", "Z pen-down position", "steps", {}},
           {"z_vel_steps", "Z velocity", "steps/s", {}},
           {"z_accel_steps", "Z acceleration", "steps/s²", {}}}},
+        {"Limits and homing",
+         {{"x_limit_plus", "X+ limit input", "", kInput},
+          {"x_limit_minus", "X− limit input", "", kInput},
+          {"x_home", "X home input", "", kInput},
+          {"y_limit_plus", "Y+ limit input", "", kInput},
+          {"y_limit_minus", "Y− limit input", "", kInput},
+          {"y_home", "Y home input", "", kInput},
+          {"switch_open", "Normally open switches (bits)", "", {}},
+          {"home_mode", "Homing", "",
+           {{"0", "Off"}, {"1", "On the home switches"}, {"2", "ClearPath hard stop (Cartesian)"}}},
+          {"home_required", "Home before plotting", "", {{"0", "No"}, {"1", "Yes (homes by itself)"}}},
+          {"home_order", "Home order", "", {{"0", "X then Y"}, {"1", "Y then X"}}},
+          {"x_home_dir", "X home direction", "", kHomeDir},
+          {"x_home_fast", "X search speed", "mm/s", {}},
+          {"x_home_slow", "X latch speed", "mm/s", {}},
+          {"x_home_back", "X back-off", "mm", {}},
+          {"x_home_at", "X position at the switch", "mm", {}},
+          {"x_home_travel", "X longest search (0 = plot width)", "mm", {}},
+          {"y_home_dir", "Y home direction", "", kHomeDir},
+          {"y_home_fast", "Y search speed", "mm/s", {}},
+          {"y_home_slow", "Y latch speed", "mm/s", {}},
+          {"y_home_back", "Y back-off", "mm", {}},
+          {"y_home_at", "Y position at the switch", "mm", {}},
+          {"y_home_travel", "Y longest search (0 = plot height)", "mm", {}}}},
         {"Safety",
          {{"estop_di6", "Estop input DI-6", "",
            {{"0", "Not used"}, {"1", "Fault when DI-6 is low"}, {"2", "Fault when DI-6 is high"}}},

@@ -8,7 +8,8 @@ shows the same data in its status bar and its log. This is an example:
 \begin{lstlisting}[language=console]
 state=idle enabled=1 x_mm=0.000 y_mm=0.000 pen=up sel_pen=1 queue=0
 planner=0 segments=1767 arcs=550 arc_fallbacks=0 curve_capped=1298
-dropped=0 pages=0 estop=ok fault=none
+dropped=0 pages=0 inputs=0180 sw=00 homed=0 home_mode=0 estop=ok
+fault=none
 \end{lstlisting}
 
 \begin{table}[htbp]
@@ -28,6 +29,12 @@ dropped=0 pages=0 estop=ok fault=none
 \code{arc_fallbacks} & Arcs that the planner refused and that the board drew as a line. \\
 \code{curve_capped} & Segments that were slower because of a curve. \\
 \code{dropped} & Segments that the board could not plot (for example, zero length). \\
+\code{inputs} & The levels of the inputs, in hexadecimal: bit 0--5
+\conn{IO-0}--\conn{IO-5}, bit 7 \conn{DI-7}, bit 8 \conn{DI-8}, bit 9--12
+\conn{A-9}--\conn{A-12}. \\
+\code{sw} & Tripped switches: 1 X+, 2 X-, 4 X home, 8 Y+, 10 Y-, 20 Y home
+(hexadecimal). \\
+\code{homed}, \code{home_mode} & Homed axes (1 X, 2 Y), and \key{home_mode}. \\
 \code{estop}, \code{fault} & The emergency stop input, and the latched fault. \\
 \bottomrule
 \end{tabularx}
@@ -54,6 +61,10 @@ A fault stops the machine (section~\ref{sec:fault-behavior}). The
 \code{motor fault on M0 (X)}, \code{motor fault on M1 (Y)} & Examine the
 servo with ClearPath MSP: tracking error, overload, or power. Then type
 \cmd{clear}. \\
+\code{limit X+ (DI-7)} (and the other limits) & A job moved into a limit
+switch. Jog the axis away from the switch (the app or \cmd{jog}), find why the
+job went there (plot area, origin, homing), then type \cmd{clear}. \\
+Homing errors & Table~\ref{tab:homing-errors}. \\
 \code{HLFB not asserted} & A servo does not supply its ready signal. Examine
 its power, its cable, and its HLFB setting in MSP. Set \key{hlfb_check}~0 only
 if your servos have no HLFB. \\

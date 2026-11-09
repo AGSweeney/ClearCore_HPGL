@@ -18,5 +18,7 @@ Plotter.cpp
 
 Settings.cpp
 
+Switches.cpp
+
 Transport.cpp
 

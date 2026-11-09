@@ -6,6 +6,7 @@
 #include "CoordinatedMotionController.h"
 #include "PlotterConfig.h"
 #include "Settings.h"
+#include "Switches.h"
 #include "Transport.h"
 
 #include <initializer_list>
@@ -76,6 +77,7 @@ static bool g_resumeLower = false;
 static int g_pen = 1;
 
 static PlotterReplyFn g_reply = nullptr;
+static void StartPen(bool down);
 static uint32_t g_segments = 0;
 static uint32_t g_dropped = 0;
 static uint32_t g_arcs = 0;
@@ -176,11 +178,122 @@ static void HeadPu(double *xPu, double *yPu) {
 
 /* The present position becomes 0,0, and the motors' step counters restart at 0 so that diag can
  * compare them with the head position. Motors stopped and nothing queued. */
-static void ZeroPosition() {
-    g_xy.SetPosition(0, 0);
-    ConnectorM0.PositionRefSet(0);
-    ConnectorM1.PositionRefSet(0);
+/* ------------------------------------------------------------------------- */
+/* Switches (sampled in the step interrupt)                                    */
+/* ------------------------------------------------------------------------- */
+
+/* The switches work in HP-GL axis steps: + is HP-GL +, whatever dir_x / dir_y / swap_xy say. */
+static SwitchMonitor g_sw;
+static int8_t g_axSign[2] = {1, 1};
+static double g_axSpm[2] = {1.0, 1.0};   /* |steps per mm| */
+static uint32_t g_rampDecel = 1;         /* limit and abort stops: 3 x accel, steps/s^2 */
+static uint32_t g_stopDecel = 1;         /* jog release, homing stop: accel */
+static Connector *g_inputs[kInputCodeMax + 1] = {nullptr};
+static volatile bool g_swHold = false;   /* the position is being set: skip a sample */
+static bool g_positionChanged = false;
+
+static Connector *InputConnector(int code) {
+    switch (code) {
+        case 0: return &ConnectorIO0;
+        case 1: return &ConnectorIO1;
+        case 2: return &ConnectorIO2;
+        case 3: return &ConnectorIO3;
+        case 4: return &ConnectorIO4;
+        case 5: return &ConnectorIO5;
+        case 7: return &ConnectorDI7;
+        case 8: return &ConnectorDI8;
+        case 9: return &ConnectorA9;
+        case 10: return &ConnectorA10;
+        case 11: return &ConnectorA11;
+        case 12: return &ConnectorA12;
+        default: return nullptr;
+    }
+}
+
+/* Every sample, before the motors refresh: a stop asked for here is taken in this same sample. */
+static void SampleSwitches() {
+    if (g_swHold) {
+        return;
+    }
+    uint16_t levels = 0;
+    for (int c = 0; c <= kInputCodeMax; c++) {
+        Connector *k = g_inputs[c];
+        if (k && k->State()) {
+            levels |= (uint16_t)(1u << c);
+        }
+    }
+    int32_t ax, ay;
+    CtrlToAxis(g_xy.CurrentX(), g_xy.CurrentY(), &ax, &ay);
+    const bool idle = !g_xy.IsActive() && g_xy.MotionQueueCount() == 0;
+    if (g_sw.Sample(levels, ax * g_axSign[0], ay * g_axSign[1], idle) && g_enabled) {
+        g_xy.StopRamped(g_rampDecel);
+    }
+}
+
+/* Head position, HP-GL axis steps (+ = HP-GL +). */
+static int32_t HeadSteps(int axis) {
+    int32_t ax, ay;
+    CtrlToAxis(g_xy.CurrentX(), g_xy.CurrentY(), &ax, &ay);
+    return (axis ? ay : ax) * g_axSign[axis];
+}
+
+/* The head is now at x, y (HP-GL axis steps). Stopped, nothing queued. The motors' step counters
+ * follow, so diag still compares; the switch monitor's machine position does not move. */
+static void SetHeadSteps(int32_t x, int32_t y) {
+    const int32_t shiftX = x - HeadSteps(0);
+    const int32_t shiftY = y - HeadSteps(1);
+    int32_t cx, cy, a, b;
+    AxisToCtrl(x * g_axSign[0], y * g_axSign[1], &cx, &cy);
+    Kinematics::ToMotor(g_xy.Kinematics(), cx, cy, a, b);
+    g_swHold = true;
+    g_xy.SetPosition(cx, cy);
+    g_sw.Shift(shiftX, shiftY);
+    g_swHold = false;
+    ConnectorM0.PositionRefSet(a);
+    ConnectorM1.PositionRefSet(b);
     SyncTailFromMotion();
+    g_positionChanged = true;
+}
+
+static void ZeroPosition() {
+    SetHeadSteps(0, 0);
+}
+
+/* Jog and homing state. */
+enum HomePhase : uint8_t { HOME_NONE, HOME_PEN, HOME_RUN, HOME_HARD_OFF, HOME_HARD_WAIT };
+static HomePhase g_homePhase = HOME_NONE;
+static uint8_t g_homeAxes = 0;
+static uint8_t g_homed = 0;
+static uint32_t g_homeMs = 0;
+static uint32_t g_homeEnds[2] = {0, 0};
+static const char *g_homeLast = "none";
+static HomingSequencer g_seq;
+
+static bool g_jogOn = false;        /* a jog move is running */
+static bool g_jogStopping = false;  /* released: ramping down */
+static int g_jogAxis = 0;
+static double g_jogV = 0.0;
+static uint32_t g_jogUntil = 0;
+static int8_t g_jogStoppedInput = -1;  /* a stop-on input stopped it; refused until jog stop */
+static int8_t g_jogLimit = -1;         /* the limit that stopped the last jog */
+static bool g_pendingJog = false;
+static int g_pendingAxis = 0;
+static double g_pendingV = 0.0;
+static uint16_t g_pendingStopOn = 0;
+
+/* Limit stops, per switch: how many, where the switch tripped (mm). */
+static uint32_t g_trips[SW_COUNT] = {0};
+static double g_tripAtMm[SW_COUNT] = {0};
+static char g_limitMsg[48];
+static SwitchEvent g_lastStop;
+static bool g_haveLastStop = false;
+
+static bool SwitchMotionBusy() {
+    return g_homePhase != HOME_NONE || g_jogOn || g_jogStopping || g_pendingJog;
+}
+
+static double EdgeMm(const SwitchEvent &e, int axis) {
+    return (axis ? (double)e.y : (double)e.x) / g_axSpm[axis];
 }
 
 /* Curves that are not native arcs (DXF tessellation, driver polylines, chorded HP-GL arcs)
@@ -504,6 +617,20 @@ void PlotterApplySettings() {
     for (MotorDriver *m : {&ConnectorM0, &ConnectorM1}) {
         m->EStopDecelMax((uint32_t)(g_settings.accelMmS2 * spmmX * 2.0));
     }
+    /* Switches. */
+    const double rampDecel = g_settings.accelMmS2 * spmmX * 3.0;
+    g_rampDecel = rampDecel < 1.0 ? 1u : (uint32_t)rampDecel;
+    g_stopDecel = g_accelSteps < 1.0 ? 1u : (uint32_t)g_accelSteps;
+    {
+        SwitchConfig sc;
+        for (int i = 0; i < SW_COUNT; i++) {
+            sc.pin[i] = g_settings.swPin[i];
+        }
+        sc.normallyOpen = g_settings.swOpen;
+        g_swHold = true;
+        g_sw.Configure(sc);
+        g_swHold = false;
+    }
     /* Kinematics and swap_xy change only with the motors disabled ([disabled] settings). The old
      * X/Y means nothing in the new frame, so the present position becomes the origin. */
     const CoordKinematics kin = g_settings.kinematics ? KINEMATICS_COREXY : KINEMATICS_CARTESIAN;
@@ -518,6 +645,25 @@ void PlotterApplySettings() {
         ConnectorM2.AccelMax(g_settings.zAccelSteps);
         InitPenHardware();
         SyncTailFromMotion();
+        /* Every input but the pen's reads as a digital input, so any of them can be found as a
+         * switch. dir, swap_xy and the scales only change here: the switch frame restarts. */
+        g_swHold = true;
+        for (int c = 0; c <= kInputCodeMax; c++) {
+            Connector *k = InputConnector(c);
+            if (k && g_settings.penMode == PEN_MODE_OUTPUT && c == g_settings.penIo) {
+                k = nullptr;
+            }
+            if (k) {
+                k->Mode(Connector::INPUT_DIGITAL);
+            }
+            g_inputs[c] = k;
+        }
+        g_axSign[0] = g_stepsPerPu[0] < 0 ? -1 : 1;
+        g_axSign[1] = g_stepsPerPu[1] < 0 ? -1 : 1;
+        g_axSpm[0] = fabs(spmmX);
+        g_axSpm[1] = fabs(spmmY);
+        g_sw.Resync();
+        g_swHold = false;
     }
 }
 
@@ -538,6 +684,8 @@ bool PlotterInit() {
     g_xy.StopAtQueueEnd(true);
     ZeroPosition();
     PlotterApplySettings();
+    g_positionChanged = false;
+    SysMgr.SampleCallbackSet(SampleSwitches);
     g_ready = true;
     return true;
 }
@@ -593,7 +741,10 @@ const char *PlotterEnable() {
     return nullptr;
 }
 
+static void EndSwitchMotion();
+
 const char *PlotterDisable() {
+    EndSwitchMotion();
     g_xy.Stop();
     ConnectorM2.MoveStopAbrupt();
     for (MotorDriver *m : {&ConnectorM0, &ConnectorM1, &ConnectorM2}) {
@@ -621,8 +772,10 @@ void PlotterAbort() {
     ClearActions();
     g_paused = false;
     g_resumeLower = false;
+    PlotterJogStop();
+    PlotterHomeStop();
     if (g_enabled && !XyIdle()) {
-        g_xy.StopDecel();
+        g_xy.StopRamped(g_rampDecel);  /* along the path, at 3 x accel */
         g_abortStop = true;
         return;
     }
@@ -646,8 +799,10 @@ bool PlotterTakeJobAbort() {
     return r;
 }
 
+static bool SwitchMotionBusy();
+
 bool PlotterIdle() {
-    return g_count == 0 && XyIdle() && !g_penBusy && !g_abortStop;
+    return g_count == 0 && XyIdle() && !g_penBusy && !g_abortStop && !SwitchMotionBusy();
 }
 
 const char *PlotterSetOrigin() {
@@ -655,6 +810,8 @@ const char *PlotterSetOrigin() {
         return "plotter busy";
     }
     ZeroPosition();
+    g_positionChanged = false;  /* the caller resyncs */
+    g_homed = 0;                /* the frame moved off the switches */
     return nullptr;
 }
 
@@ -666,10 +823,13 @@ const char *PlotterFault() {
     return g_fault;
 }
 
+static void PollSwitchMotion();
+
 void PlotterPoll() {
     if (!g_ready) {
         return;
     }
+    PollSwitchMotion();
     if (EstopTripped()) {
         if (g_enabled || g_count > 0) {
             PlotterDisable();
@@ -703,7 +863,7 @@ void PlotterPoll() {
     }
 
     if (g_abortStop) {
-        if (!XyIdle()) {
+        if (!XyIdle() || g_xy.StopRampedPending()) {
             return;
         }
         g_abortStop = false;
@@ -714,8 +874,11 @@ void PlotterPoll() {
     }
 
     PollPen();
-    if (g_penBusy) {
+    if (g_penBusy || SwitchMotionBusy()) {
         return;
+    }
+    if (g_fault && g_count > 0 && Head().type != ACT_PEN_UP) {
+        return;  /* a limit stopped the last job: the next waits for clear (the pen still lifts) */
     }
 
     if (g_paused) {
@@ -756,8 +919,14 @@ static const char *StateName() {
     if (TransportBuffering()) {
         return "buffering";  /* receiving a job to reorder; plotting starts when it ends */
     }
+    if (g_homePhase != HOME_NONE) {
+        return "homing";
+    }
     if (!g_enabled) {
         return (g_count > 0) ? "waiting_enable" : "disabled";
+    }
+    if (g_jogOn || g_jogStopping) {
+        return "jogging";
     }
     if (g_paused) {
         return "paused";
@@ -834,10 +1003,554 @@ void PlotterStatus(char *buf, size_t len) {
     snprintf(buf, len,
              "state=%s enabled=%d x_mm=%.3f y_mm=%.3f pen=%s sel_pen=%d queue=%u planner=%u "
              "segments=%lu arcs=%lu arc_fallbacks=%lu curve_capped=%lu dropped=%lu pages=%lu "
-             "estop=%s fault=%s",
+             "inputs=%04x sw=%02x homed=%u home_mode=%u estop=%s fault=%s",
              state, g_enabled ? 1 : 0, x, y, g_physPenDown ? "down" : "up", g_pen,
              (unsigned)g_count, (unsigned)g_xy.MotionQueueCount(), (unsigned long)g_segments,
              (unsigned long)g_arcs, (unsigned long)g_arcFallbacks, (unsigned long)g_curveCapped,
-             (unsigned long)g_dropped, (unsigned long)g_pages, EstopTripped() ? "open" : "ok",
-             g_fault ? g_fault : "none");
+             (unsigned long)g_dropped, (unsigned long)g_pages, (unsigned)g_sw.Levels(),
+             (unsigned)g_sw.Tripped(), (unsigned)g_homed, (unsigned)g_settings.homeMode,
+             EstopTripped() ? "open" : "ok", g_fault ? g_fault : "none");
+}
+
+/* ------------------------------------------------------------------------- */
+/* Jog and homing                                                              */
+/* ------------------------------------------------------------------------- */
+
+/* One axis by delta HP-GL axis steps, pen up, at mm/s. */
+static bool MoveAxisSteps(int axis, int32_t delta, double mmPerS) {
+    int32_t t[2] = {HeadSteps(0), HeadSteps(1)};
+    t[axis] += delta;
+    int32_t cx, cy;
+    AxisToCtrl(t[0] * g_axSign[0], t[1] * g_axSign[1], &cx, &cy);
+    const double sps = fabs(mmPerS) * g_axSpm[axis];
+    g_xy.ArcVelMax(sps < 1.0 ? 1u : (uint32_t)sps);
+    g_prevDirValid = false;
+    if (!g_xy.QueueLinear(cx, cy)) {
+        return false;
+    }
+    g_tailX = cx;
+    g_tailY = cy;
+    return true;
+}
+
+static void NoteStop(const SwitchEvent &e) {
+    g_lastStop = e;
+    g_haveLastStop = true;
+    if (e.limit && e.sw >= 0 && e.sw < SW_COUNT) {
+        g_trips[e.sw]++;
+        g_tripAtMm[e.sw] = EdgeMm(e, SwitchAxis(e.sw));
+    }
+}
+
+class PlotterHomingIo : public HomingIo {
+public:
+    void Move(int axis, double mm, double mmPerS, uint8_t onTrip, uint8_t onRelease) override {
+        g_sw.ArmStop(onTrip, onRelease);
+        MoveAxisSteps(axis, (int32_t)lround(mm * g_axSpm[axis]), mmPerS);
+    }
+    bool Idle() override {
+        return XyIdle() && !g_xy.StopRampedPending();
+    }
+    uint8_t Tripped() override {
+        return g_sw.Tripped();
+    }
+    bool TakeEvent(SwitchEvent *e) override {
+        if (!g_sw.TakeEvent(e)) {
+            return false;
+        }
+        NoteStop(*e);
+        return true;
+    }
+    int32_t Position(int axis) override {
+        return HeadSteps(axis);
+    }
+    void SetPosition(int axis, int32_t steps) override {
+        SetHeadSteps(axis ? HeadSteps(0) : steps, axis ? steps : HeadSteps(1));
+    }
+    double StepsPerMm(int axis) override {
+        return g_axSpm[axis];
+    }
+};
+
+static PlotterHomingIo g_homeIo;
+
+static void EndHoming(const char *err, bool stopped) {
+    g_sw.SetLimitMask(0);
+    g_sw.ArmStop(0, 0);
+    for (int a = 0; a < 2; a++) {
+        if (g_homeAxes & (1u << a)) {
+            g_homeEnds[a]++;
+        }
+    }
+    g_homePhase = HOME_NONE;
+    if (!err) {
+        g_homed |= g_homeAxes;
+        g_homeLast = "ok";
+        return;
+    }
+    g_homeLast = stopped ? "stopped" : err;
+    if (!stopped) {
+        g_fault = err;
+        g_jobAbort = true;
+    }
+}
+
+static void EndSwitchMotion() {
+    g_jogOn = false;
+    g_jogStopping = false;
+    g_pendingJog = false;
+    g_jogStoppedInput = -1;
+    g_sw.ArmInputStop(0);
+    if (g_homePhase != HOME_NONE) {
+        if (g_homePhase == HOME_RUN) {
+            g_seq.Abort();
+        }
+        EndHoming("stopped", true);
+    }
+    g_homed = 0;
+}
+
+static void StartJog(int axis, double v, uint16_t stopOn) {
+    g_sw.ArmInputStop(stopOn);
+    const double far = v < 0 ? -5000.0 : 5000.0;  /* mm: the deadman ends it long before */
+    if (!MoveAxisSteps(axis, (int32_t)lround(far * g_axSpm[axis]), v)) {
+        g_sw.ArmInputStop(0);
+        return;
+    }
+    g_jogOn = true;
+    g_jogAxis = axis;
+    g_jogV = v;
+    g_jogLimit = -1;
+    g_jogUntil = Milliseconds() + CHPGL_JOG_DEADMAN_MS;
+}
+
+static void BeginHomingMotion(uint32_t now) {
+    if (g_settings.homeMode == 1) {
+        uint8_t order[2];
+        int n = 0;
+        const int first = g_settings.homeOrder ? 1 : 0;
+        for (int k = 0; k < 2; k++) {
+            const int a = k ? 1 - first : first;
+            if (g_homeAxes & (1u << a)) {
+                order[n++] = (uint8_t)a;
+            }
+        }
+        HomingAxis cfg[2];
+        for (int a = 0; a < 2; a++) {
+            cfg[a].dir = g_settings.homeDir[a] < 0 ? -1 : 1;
+            cfg[a].fast = g_settings.homeFast[a];
+            cfg[a].slow = g_settings.homeSlow[a];
+            cfg[a].back = g_settings.homeBack[a];
+            cfg[a].at = g_settings.homeAt[a];
+            cfg[a].travel = g_settings.homeTravel[a];
+        }
+        const double plot[2] = {g_settings.areaMm[0], g_settings.areaMm[1]};
+        /* A home switch on a limit's input: that limit does not stop the homing onto it. */
+        uint8_t mask = 0;
+        for (int a = 0; a < 2; a++) {
+            const int h = a ? SW_Y_HOME : SW_X_HOME;
+            const int lims[2] = {a ? SW_Y_PLUS : SW_X_PLUS, a ? SW_Y_MINUS : SW_X_MINUS};
+            for (int l : lims) {
+                if (g_settings.swPin[h] >= 0 && g_settings.swPin[l] == g_settings.swPin[h]) {
+                    mask |= (uint8_t)(1u << l);
+                }
+            }
+        }
+        g_sw.SetLimitMask(mask);
+        g_seq.Start(&g_homeIo, order, n, cfg, plot);
+        g_homePhase = HOME_RUN;
+        return;
+    }
+    /* ClearPath hard-stop homing: each motor homes itself when enabled (set up in MSP, homing on
+     * every enable); HLFB asserts when it is done. Already enabled: off first. */
+    if (g_enabled) {
+        for (MotorDriver *m : {&ConnectorM0, &ConnectorM1}) {
+            m->EnableRequest(false);
+        }
+        g_enabled = false;
+        g_homeMs = now;
+    } else {
+        g_homeMs = now - CHPGL_HARD_HOME_OFF_MS;
+    }
+    g_homePhase = HOME_HARD_OFF;
+}
+
+static void PollSwitchMotion() {
+    const uint32_t now = Milliseconds();
+    /* Stops outside homing: a limit (a fault for a job, a stop for a jog), a jog's stop-on input. */
+    if (g_homePhase != HOME_RUN) {
+        SwitchEvent e;
+        if (g_sw.TakeEvent(&e)) {
+            NoteStop(e);
+            if (g_jogOn || g_jogStopping || g_pendingJog) {
+                g_jogOn = false;
+                g_pendingJog = false;
+                g_jogStopping = true;
+                if (e.limit) {
+                    g_jogLimit = e.sw;
+                } else {
+                    g_jogStoppedInput = e.input;
+                }
+            } else if (e.limit) {
+                snprintf(g_limitMsg, sizeof(g_limitMsg), "limit %s (%s)", SwitchName(e.sw), InputName(e.input));
+                g_fault = g_limitMsg;
+                g_jobAbort = true;
+                ClearActions();
+                g_paused = false;
+                g_resumeLower = false;
+                g_abortStop = true;  /* already ramping down: the pen lifts when it stops */
+            }
+        }
+    }
+
+    /* Jog: the deadman, then the ramp down. */
+    if (g_jogOn && (int32_t)(now - g_jogUntil) > 0) {
+        g_xy.StopRamped(g_stopDecel);
+        g_jogOn = false;
+        g_jogStopping = true;
+    }
+    if (g_jogStopping && XyIdle() && !g_xy.StopRampedPending()) {
+        g_jogStopping = false;
+        g_sw.ArmInputStop(0);
+        SyncTailFromMotion();
+        g_positionChanged = true;  /* the interpreter takes the new pen position */
+    }
+    if (g_pendingJog && !g_jogStopping && XyIdle() && !g_xy.StopRampedPending()) {
+        g_pendingJog = false;
+        StartJog(g_pendingAxis, g_pendingV, g_pendingStopOn);
+    }
+
+    /* Homing. */
+    switch (g_homePhase) {
+        case HOME_NONE:
+            break;
+        case HOME_PEN:
+            if (g_enabled) {
+                if (g_penBusy) {
+                    break;  /* PlotterPoll runs the pen */
+                }
+                if (g_physPenDown) {
+                    StartPen(false);
+                    break;
+                }
+                if (!XyIdle()) {
+                    break;
+                }
+            } else if (g_settings.homeMode == 1) {
+                EndHoming("motors disabled", false);
+                break;
+            }
+            BeginHomingMotion(now);
+            break;
+        case HOME_RUN:
+            if (!g_enabled) {
+                EndHoming("motors disabled", false);
+                break;
+            }
+            if (!g_seq.Poll()) {
+                if (g_seq.GetState() == HomingSequencer::DONE) {
+                    EndHoming(nullptr, false);
+                } else {
+                    const char *err = g_seq.Error() ? g_seq.Error() : "homing failed";
+                    EndHoming(err, strcmp(err, "homing stopped") == 0);
+                }
+            }
+            break;
+        case HOME_HARD_OFF:
+        case HOME_HARD_WAIT: {
+            if (EstopTripped()) {
+                PlotterDisable();
+                g_fault = "estop (DI-6)";
+                break;
+            }
+            if (g_homePhase == HOME_HARD_OFF) {
+                if (now - g_homeMs < CHPGL_HARD_HOME_OFF_MS) {
+                    break;
+                }
+                for (MotorDriver *m : {&ConnectorM0, &ConnectorM1, &ConnectorM2}) {
+                    if (m == &ConnectorM2 && !UsesZ()) {
+                        continue;
+                    }
+                    m->ClearAlerts();
+                    m->EnableRequest(true);
+                }
+                g_homeMs = now;
+                g_homePhase = HOME_HARD_WAIT;
+                break;
+            }
+            for (MotorDriver *m : {&ConnectorM0, &ConnectorM1}) {
+                if (now - g_homeMs > 500 && (m->StatusReg().bit.MotorInFault || m->StatusReg().bit.AlertsPresent)) {
+                    PlotterDisable();
+                    g_homeLast = g_fault = (m == &ConnectorM0) ? "motor alert on M0 during ClearPath homing"
+                                                               : "motor alert on M1 during ClearPath homing";
+                    g_jobAbort = true;
+                    return;
+                }
+            }
+            if (now - g_homeMs > CHPGL_HARD_HOME_TIMEOUT_MS) {
+                PlotterDisable();
+                g_homeLast = g_fault = "ClearPath homing did not finish (HLFB not asserted)";
+                g_jobAbort = true;
+                break;
+            }
+            if (now - g_homeMs < 300 || !AllHlfbAsserted()) {
+                break;
+            }
+            g_enabled = true;
+            if (UsesZ()) {
+                StartPen(false);
+            }
+            SetHeadSteps((int32_t)lround(g_settings.homeAt[0] * g_axSpm[0]),
+                         (int32_t)lround(g_settings.homeAt[1] * g_axSpm[1]));
+            EndHoming(nullptr, false);
+            break;
+        }
+    }
+}
+
+const char *PlotterJog(int axis, double mmPerS, uint16_t stopOn) {
+    static char msg[64];
+    if (!g_ready) {
+        return "motion controller not initialized";
+    }
+    if (!g_enabled) {
+        return "motors disabled (enable first)";
+    }
+    if (axis < 0 || axis > 1 || !(fabs(mmPerS) > 0.0)) {
+        return "usage: jog <x|y> <mm_s> [stopon <input>,...]";
+    }
+    if (g_homePhase != HOME_NONE) {
+        return "homing";
+    }
+    if (g_count > 0 || g_abortStop || g_penBusy) {
+        return "plotter busy";
+    }
+    if (g_jogStoppedInput >= 0) {
+        snprintf(msg, sizeof(msg), "stopped on a switch: %s (jog stop)", InputName(g_jogStoppedInput));
+        return msg;
+    }
+    if (mmPerS > g_settings.maxMmS) {
+        mmPerS = g_settings.maxMmS;
+    } else if (mmPerS < -g_settings.maxMmS) {
+        mmPerS = -g_settings.maxMmS;
+    }
+    /* A tripped limit: only away from it. */
+    const int lim = axis ? (mmPerS > 0 ? SW_Y_PLUS : SW_Y_MINUS) : (mmPerS > 0 ? SW_X_PLUS : SW_X_MINUS);
+    if (g_sw.Tripped() & (1u << lim)) {
+        if (g_jogOn) {
+            PlotterJogStop();
+        }
+        snprintf(msg, sizeof(msg), "limit %s tripped: jog the other way", SwitchName(lim));
+        return msg;
+    }
+    if (g_fault == g_limitMsg) {
+        g_fault = nullptr;  /* jogging off the limit */
+    }
+    const uint32_t now = Milliseconds();
+    if (g_jogOn) {
+        if (axis == g_jogAxis && mmPerS == g_jogV) {
+            g_jogUntil = now + CHPGL_JOG_DEADMAN_MS;
+            return nullptr;
+        }
+        g_xy.StopRamped(g_stopDecel);
+        g_jogOn = false;
+        g_jogStopping = true;
+    }
+    if (g_jogStopping || !XyIdle()) {
+        g_pendingJog = true;
+        g_pendingAxis = axis;
+        g_pendingV = mmPerS;
+        g_pendingStopOn = stopOn;
+        return nullptr;
+    }
+    StartJog(axis, mmPerS, stopOn);
+    return g_jogOn ? nullptr : "jog refused by the planner";
+}
+
+void PlotterJogStop() {
+    g_pendingJog = false;
+    g_jogStoppedInput = -1;
+    if (g_jogOn) {
+        g_xy.StopRamped(g_stopDecel);
+        g_jogOn = false;
+        g_jogStopping = true;
+    }
+    g_sw.ArmInputStop(0);
+}
+
+const char *PlotterHome(uint8_t axes) {
+    if (!g_ready) {
+        return "motion controller not initialized";
+    }
+    if (g_settings.homeMode == 0) {
+        return "homing is off (set home_mode 1 or 2)";
+    }
+    if (g_homePhase != HOME_NONE) {
+        return "homing already";
+    }
+    if (g_count > 0 || !XyIdle() || g_abortStop || g_jogOn || g_jogStopping || g_pendingJog) {
+        return "plotter busy";
+    }
+    if (EstopTripped()) {
+        return "estop open (DI-6)";
+    }
+    axes &= 3u;
+    if (!axes) {
+        /* All: each axis with a home switch (both for ClearPath homing). */
+        axes = g_settings.homeMode == 2 ? 3
+                                        : (uint8_t)((g_settings.swPin[SW_X_HOME] >= 0 ? 1u : 0u) |
+                                                    (g_settings.swPin[SW_Y_HOME] >= 0 ? 2u : 0u));
+        if (!axes) {
+            return "no home switch set (x_home, y_home)";
+        }
+    }
+    if (g_settings.homeMode == 1) {
+        if ((axes & 1u) && g_settings.swPin[SW_X_HOME] < 0) {
+            return "no X home switch (set x_home)";
+        }
+        if ((axes & 2u) && g_settings.swPin[SW_Y_HOME] < 0) {
+            return "no Y home switch (set y_home)";
+        }
+        if (!g_enabled) {
+            if (const char *err = PlotterEnable()) {
+                return err;
+            }
+        }
+    } else {
+        if (axes != 3) {
+            return "ClearPath hard-stop homing homes both axes together";
+        }
+        if (!g_settings.hlfbCheck) {
+            return "ClearPath homing is seen on HLFB: set hlfb_check 1";
+        }
+    }
+    if (g_fault == g_limitMsg) {
+        g_fault = nullptr;
+    }
+    g_homeAxes = axes;
+    g_homed &= (uint8_t)~axes;
+    g_homeLast = "running";
+    g_homePhase = HOME_PEN;
+    return nullptr;
+}
+
+void PlotterHomeStop() {
+    switch (g_homePhase) {
+        case HOME_NONE:
+            break;
+        case HOME_RUN:
+            g_xy.StopRamped(g_stopDecel);
+            g_seq.Abort();  /* the next poll ends it */
+            break;
+        case HOME_PEN:
+            EndHoming("stopped", true);
+            break;
+        default:
+            PlotterDisable();  /* a ClearPath stops homing when disabled */
+            break;
+    }
+}
+
+uint8_t PlotterHomed() {
+    return g_homed;
+}
+
+bool PlotterHoldJobs(bool jobWaiting) {
+    if (g_homePhase != HOME_NONE) {
+        return true;
+    }
+    if (!g_settings.homeRequired || g_settings.homeMode == 0) {
+        return false;
+    }
+    uint8_t need = 3;
+    if (g_settings.homeMode == 1) {
+        need = (uint8_t)((g_settings.swPin[SW_X_HOME] >= 0 ? 1u : 0u) | (g_settings.swPin[SW_Y_HOME] >= 0 ? 2u : 0u));
+    }
+    if (need == 0 || (g_homed & need) == need) {
+        return false;
+    }
+    /* A failed homing leaves its fault: the job waits for clear, then homes again. */
+    if (!jobWaiting || g_fault || !PlotterIdle()) {
+        return true;
+    }
+    if (!g_enabled && !g_settings.autoEnable) {
+        return true;
+    }
+    if (const char *err = PlotterHome(need)) {
+        g_fault = err;
+    }
+    return true;
+}
+
+bool PlotterTakePositionChanged() {
+    const bool r = g_positionChanged;
+    g_positionChanged = false;
+    return r;
+}
+
+void PlotterSimLevel(int code, int mode) {
+    g_swHold = true;
+    g_sw.SimLevel(code, mode);
+    g_swHold = false;
+}
+
+void PlotterSimAt(int code, int axis, int side, double mm) {
+    g_swHold = true;
+    g_sw.SimAt(code, axis ? 1 : 0, side, (int32_t)lround(mm * g_axSpm[axis ? 1 : 0]));
+    g_swHold = false;
+}
+
+void PlotterSimClear() {
+    g_swHold = true;
+    g_sw.SimClear();
+    g_swHold = false;
+}
+
+void PlotterSwitchInfo(void (*out)(const char *line)) {
+    static const char *const kKey[] = {"x+", "x-", "x_home", "y+", "y-", "y_home"};
+    char buf[200];
+    uint16_t sim = 0;
+    for (int c = 0; c <= kInputCodeMax; c++) {
+        if (g_sw.Simulated(c)) {
+            sim |= (uint16_t)(1u << c);
+        }
+    }
+    snprintf(buf, sizeof(buf), "inputs levels=%04x sim=%04x tripped=%02x", (unsigned)g_sw.Levels(), (unsigned)sim,
+             (unsigned)g_sw.Tripped());
+    out(buf);
+    for (int s = 0; s < SW_COUNT; s++) {
+        snprintf(buf, sizeof(buf), "switch %s input=%s open=%d tripped=%d trips=%lu at=%.3f", kKey[s],
+                 InputName(g_settings.swPin[s]), (g_settings.swOpen >> s) & 1, (g_sw.Tripped() >> s) & 1,
+                 (unsigned long)g_trips[s], g_tripAtMm[s]);
+        out(buf);
+    }
+    snprintf(buf, sizeof(buf), "pos x=%.3f y=%.3f moving=%d", HeadSteps(0) / g_axSpm[0], HeadSteps(1) / g_axSpm[1],
+             XyIdle() ? 0 : 1);
+    out(buf);
+    snprintf(buf, sizeof(buf), "jog on=%d axis=%c v=%.3f stopped=%s limit=%s", (g_jogOn || g_pendingJog) ? 1 : 0,
+             g_jogAxis ? 'y' : 'x', g_jogV, g_jogStoppedInput >= 0 ? InputName(g_jogStoppedInput) : "none",
+             g_jogLimit >= 0 ? kKey[g_jogLimit] : "none");
+    out(buf);
+    if (g_haveLastStop) {
+        const SwitchEvent &e = g_lastStop;
+        snprintf(buf, sizeof(buf), "laststop kind=%s switch=%s input=%s x=%.3f y=%.3f",
+                 e.limit ? "limit" : (e.sw < 0 ? "input" : (e.released ? "release" : "trip")),
+                 e.sw >= 0 ? kKey[e.sw] : "none", InputName(e.input), e.x / g_axSpm[0], e.y / g_axSpm[1]);
+    } else {
+        snprintf(buf, sizeof(buf), "laststop kind=none");
+    }
+    out(buf);
+    const char *state = "idle";
+    if (g_homePhase == HOME_PEN) {
+        state = "pen_up";
+    } else if (g_homePhase == HOME_RUN) {
+        state = HomingSequencer::StateName(g_seq.GetState());
+    } else if (g_homePhase != HOME_NONE) {
+        state = "clearpath";
+    }
+    snprintf(buf, sizeof(buf),
+             "home mode=%u state=%s homed=%u x_ends=%lu x_latch=%.3f y_ends=%lu y_latch=%.3f last=%s",
+             (unsigned)g_settings.homeMode, state, (unsigned)g_homed, (unsigned long)g_homeEnds[0], g_seq.LatchMm(0),
+             (unsigned long)g_homeEnds[1], g_seq.LatchMm(1), g_homeLast);
+    out(buf);
 }

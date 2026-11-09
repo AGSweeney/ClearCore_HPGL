@@ -60,6 +60,7 @@ private slots:
     void OpenFirmwareUpdate();
     // Plotter > ClearPath scope: the servos over their own USB ports (ScopeWindow).
     void OpenClearPathScope();
+    void OpenSwitchWizard();
     void ExportHpgl();
     void SaveDxfGeometryAs();
     void OnPathIssueQuickFixCloseContour(int stripIndex);
@@ -117,6 +118,8 @@ private:
 
     PlotterLink m_link;
     class ScopeWindow *m_scope = nullptr;  // a top-level window, kept once opened
+    class SwitchWizard *m_switchWizard = nullptr;
+    QPushButton *m_homeButton = nullptr;
 
     // Connection
     QComboBox *m_transportCombo = nullptr;

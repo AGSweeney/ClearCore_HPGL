@@ -41,6 +41,26 @@ can be plotting. The position stays in the plot area. \\
 \cmd{pen up}, \cmd{pen down} & Raise or lower the pen to test it. No job can
 be plotting. \\
 \cmd{clear} & Clear a latched fault. Remove the cause first. \\
+\cmd{home} & Home each axis that has a home switch (\key{home_mode}~1), or both
+servos (\key{home_mode}~2). Section~\ref{sec:homing}. \\
+\cmd{home x}, \cmd{home y} & Home one axis. \\
+\cmd{home stop} & Stop homing. \\
+\cmd{jog} \textit{axis mm\_s} [\cmd{stopon} \textit{inputs}] & Move an axis
+(\cmd{x} or \cmd{y}) at \textit{mm\_s} (negative for -). The jog stops 0.5~s
+after the last command, so send it again while it must continue. With
+\cmd{stopon DI-7,A-9} (for example), the jog stops when one of these inputs
+changes from its level at the start. Then the board refuses the jog until
+\cmd{jog stop}. A jog toward a tripped limit is refused. \\
+\cmd{jog stop} & Stop the jog. \\
+\cmd{swinfo} & Show the input levels, each switch (input, contact, state,
+limit stops, and where the last one tripped), the position, the jog, the last
+stop, and the last homing. \\
+\cmd{sim} \textit{input} \cmd{low}\,|\,\cmd{high}\,|\,\cmd{off} & Hold a
+simulated input low or high, or release it. \\
+\cmd{sim} \textit{input} \textit{side mm} & A simulated switch on the input,
+\textit{mm} from the head on \textit{side} (\cmd{x+}, \cmd{x-}, \cmd{y+}, or
+\cmd{y-}). Section~\ref{sec:sim-switches}. \\
+\cmd{sim clear} & Remove all simulated inputs. \\
 \cmd{diag} & Show the motion diagnostics, the last job of the optimizer, and
 the data of the USB link. \\
 \cmd{diag reset} & Set the timing counters to zero, then show the diagnostics. \\
@@ -68,6 +88,12 @@ to HP-GL. \\
 \code{a job is running; change it when the plotter is idle} & The setting can change only between jobs. \\
 \code{applied but NVM write failed} & The board uses the value but could not save it. The supply voltage is too low. \\
 \code{plotter busy} & The command needs the machine to be idle. \\
+\code{that input already has a switch} & Two switches cannot use one input,
+except a home switch on a limit of the same axis. \\
+\code{limit X+ tripped: jog the other way} & Move the axis away from the
+limit. \\
+\code{stopped on a switch: DI-7 (jog stop)} & A \cmd{stopon} input stopped
+the jog. Type \cmd{jog stop}. \\
 \code{unknown command (try: help)} & The command name is not correct. \\
 \bottomrule
 \end{tabularx}

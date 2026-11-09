@@ -5,6 +5,7 @@
 #include "Plotter.h"
 #include "PlotterConfig.h"
 #include "Settings.h"
+#include "Switches.h"
 #include "Transport.h"
 
 #include <stdio.h>
@@ -23,6 +24,10 @@ static const char *const kHelp[] = {
     "  goto <x_mm> <y_mm>   pen-up move (no job running)",
     "  pen up | pen down    pen test (no job running)",
     "  clear                clear a latched fault",
+    "  home [x|y|all|stop]  home the axes on their switches (home_mode)",
+    "  jog <x|y> <mm_s> [stopon <in>,...]  move while renewed (0.5 s); jog stop",
+    "  swinfo               inputs, switches, limit stops, homing",
+    "  sim <in> low|high|off | sim <in> <x+|x-|y+|y-> <mm> | sim clear   bench switches",
     "  tel <ms>             TCP console: push 'TEL x= y= pen= state= queue=' every <ms> (0 = off)",
     "  restart              reboot (network and COM settings apply)",
     "  version",
@@ -82,8 +87,8 @@ bool ConsoleHandleLine(const char *lineIn, ConsoleOut out) {
     char line[CHPGL_MAX_LINE];
     strncpy(line, lineIn, sizeof(line) - 1);
     line[sizeof(line) - 1] = '\0';
-    char *tok[4];
-    const uint8_t n = Tokenize(line, tok, 4);
+    char *tok[6];
+    const uint8_t n = Tokenize(line, tok, 6);
     if (n == 0) {
         return false;
     }
@@ -192,6 +197,78 @@ bool ConsoleHandleLine(const char *lineIn, ConsoleOut out) {
             return false;
         }
         Reply(out, TransportSetTelemetry(out, (uint32_t)atoi(tok[1])));
+    } else if (Eq(cmd, "home")) {
+        if (n >= 2 && Eq(tok[1], "stop")) {
+            PlotterHomeStop();
+            Reply(out, nullptr);
+            return false;
+        }
+        uint8_t axes = 0;
+        if (n >= 2) {
+            axes = Eq(tok[1], "x") ? 1 : (Eq(tok[1], "y") ? 2 : (Eq(tok[1], "all") ? 0 : 0xFF));
+            if (axes == 0xFF) {
+                Reply(out, "usage: home [x|y|all|stop]");
+                return false;
+            }
+        }
+        Reply(out, TransportJobActive() ? "a job is running" : PlotterHome(axes));
+    } else if (Eq(cmd, "jog")) {
+        if (n == 1) {
+            PlotterSwitchInfo(out);
+            out("ok");
+            return false;
+        }
+        if (Eq(tok[1], "stop")) {
+            PlotterJogStop();
+            Reply(out, nullptr);
+            return false;
+        }
+        const int axis = Eq(tok[1], "x") ? 0 : (Eq(tok[1], "y") ? 1 : -1);
+        if (axis < 0 || n < 3) {
+            Reply(out, "usage: jog <x|y> <mm_s> [stopon <input>,...] | jog stop");
+            return false;
+        }
+        uint16_t stopOn = 0;
+        if (n >= 5 && strcmp(tok[3], "stopon") == 0) {
+            char list[CHPGL_MAX_LINE];
+            strncpy(list, tok[4], sizeof(list) - 1);
+            list[sizeof(list) - 1] = '\0';
+            for (char *p = strtok(list, ","); p; p = strtok(nullptr, ",")) {
+                const int code = ParseInputName(p);
+                if (code < 0) {
+                    Reply(out, "stopon: not an input (DI-7, DI-8, A-9..A-12, IO-0..IO-5)");
+                    return false;
+                }
+                stopOn |= (uint16_t)(1u << code);
+            }
+        }
+        Reply(out, TransportJobActive() ? "a job is running" : PlotterJog(axis, atof(tok[2]), stopOn));
+    } else if (Eq(cmd, "swinfo")) {
+        PlotterSwitchInfo(out);
+        out("ok");
+    } else if (Eq(cmd, "sim")) {
+        if (n == 2 && Eq(tok[1], "clear")) {
+            PlotterSimClear();
+            Reply(out, nullptr);
+            return false;
+        }
+        const int code = n >= 3 ? ParseInputName(tok[1]) : -2;
+        if (code < 0) {
+            Reply(out, "usage: sim <input> low|high|off | sim <input> <x+|x-|y+|y-> <mm> | sim clear");
+            return false;
+        }
+        if (Eq(tok[2], "low") || Eq(tok[2], "high") || Eq(tok[2], "off")) {
+            PlotterSimLevel(code, Eq(tok[2], "low") ? 1 : (Eq(tok[2], "high") ? 2 : 0));
+            Reply(out, nullptr);
+            return false;
+        }
+        const char *s = tok[2];
+        if (n < 4 || (s[0] != 'x' && s[0] != 'y') || (s[1] != '+' && s[1] != '-') || s[2]) {
+            Reply(out, "usage: sim <input> <x+|x-|y+|y-> <mm>: a switch that far from here on that side");
+            return false;
+        }
+        PlotterSimAt(code, s[0] == 'y' ? 1 : 0, s[1] == '+' ? 1 : -1, atof(tok[3]));
+        Reply(out, nullptr);
     } else if (Eq(cmd, "clear")) {
         PlotterClearFault();
         Reply(out, nullptr);

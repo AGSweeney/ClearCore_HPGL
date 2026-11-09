@@ -470,6 +470,14 @@ static void FeedInterpreter() {
     if (g_resyncPending) {
         return;
     }
+    /* Homing first (home_required, or running): the job waits in its channel. */
+    bool waiting = g_active >= 0 || g_opt.Busy();
+    for (int ch = 0; ch < CH_COUNT && !waiting; ch++) {
+        waiting = g_ch[ch].Count() > 0;
+    }
+    if (PlotterHoldJobs(waiting)) {
+        return;
+    }
     g_opt.Pump();
     if (g_opt.Replaying()) {
         return;  /* the buffered job goes out first */
@@ -552,6 +560,9 @@ static void HandleAborts() {
     if (jobAbort) {
         g_opt.Abort();  /* also a fault while replaying a job whose data has already ended */
         g_resyncPending = true;
+    }
+    if (PlotterTakePositionChanged()) {
+        g_resyncPending = true;  /* homed, or jogged: the interpreter takes the new position */
     }
     if (g_resyncPending && PlotterIdle()) {
         g_hpgl.SyncPositionFromSink();

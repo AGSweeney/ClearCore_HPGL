@@ -1,0 +1,260 @@
+\chapter{Limits and Homing}\label{ch:limits}
+
+Limit switches and homing are optional. Without them, the board does not know
+where the ends of the axes are: the plot area and the origin are all that keep
+the pen on the bed (section~\ref{sec:plot-area}). With them:
+
+\begin{itemize}
+  \item A \term{limit switch} stops the motion of an axis toward the end of
+        its travel. A job that reaches a limit stops, and the board drops it.
+  \item A \term{home switch} gives the axis a known position. After homing,
+        plotter 0,0 is at the same place on the bed each time.
+\end{itemize}
+
+The switches belong to the axes as HP-GL sees them (X and Y), not to the
+motors. Thus they operate the same way on a Cartesian machine, on a CoreXY
+machine, and with \key{dir_x}, \key{dir_y}, or \key{swap_xy}.
+
+\begin{warning}
+A limit switch is not an emergency stop. The board stops the axis with a
+ramp, so the axis moves past the switch before it stops. Connect an emergency
+stop to \conn{DI-6} (section~\ref{sec:fault-behavior}) and keep space for the stop
+distance after each limit switch.
+\end{warning}
+
+\section{How the Board Uses the Switches}\label{sec:switch-rules}
+
+\paragraph{Inputs.} Each switch uses one input of the ClearCore:
+\conn{DI-7}, \conn{DI-8}, \conn{A-9} to \conn{A-12}, or \conn{IO-0} to
+\conn{IO-5}. The board does not let two switches use the same input, with one
+exception: the home switch of an axis can use the input of a limit switch of
+the same axis. Then the axis homes on that limit switch. \conn{DI-6} is for the
+emergency stop, and the pen output (\key{pen_io}) cannot be a switch.
+
+\paragraph{Contacts.} A \term{normally closed} switch is on at rest and off
+when it trips. This is the default and the recommended contact: a broken wire
+reads as a tripped switch, so the axis stops. A \term{normally open} switch is
+off at rest. Set its bit in \key{switch_open} (table~\ref{tab:set-switches}).
+
+\paragraph{Filter.} The board reads the inputs at 5~kHz, in the same interrupt
+that makes the steps. A switch changes state when its input has the new level
+for three samples in a row (0.6~ms). The board keeps the position of the first
+of the three samples. This is the position where the switch tripped.
+
+\paragraph{Limits.} A tripped limit switch stops only the motion
+\emph{toward} it. Motion away from it is always possible, so you can move the
+axis off the switch. The stop is a ramp along the path at three times
+\key{accel_mm_s2}. It starts in the same sample in which the switch trips. The
+distance after the switch is approximately:
+\begin{equation}
+  d = \frac{v^{2}}{2 \times 3 \times a} + v \times 0.6\ \text{ms}
+\end{equation}
+where $v$ is the speed and $a$ is \key{accel_mm_s2}. For example, at
+200~mm/s and 2000~mm/s\textsuperscript{2}, $d \approx 3.5$~mm. At a jog speed
+of 10~mm/s, $d$ is less than 0.02~mm.
+
+\begin{table}[htbp]
+\centering
+\caption{What a limit switch does}\label{tab:limit-actions}
+\begin{tabularx}{\linewidth}{@{}P{0.28\linewidth}L@{}}
+\toprule
+\textbf{Motion} & \textbf{Result} \\
+\midrule
+A job, \cmd{goto}, or \cmd{pen} & The axis stops. The board drops the job and
+raises the pen. The fault \code{limit X+ (DI-7)} (for example) latches. The
+motors stay enabled. The next job waits until you type \cmd{clear}. \\
+A jog & The jog stops. This is not a fault. A jog toward the tripped limit is
+refused; a jog away from it is accepted, and clears the fault. \\
+Homing & Homing stops with the error \code{limit X- reached before the home
+switch} (for example), unless the home switch uses the input of that limit. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Connect the Switches}
+
+\begin{caution}
+Disconnect the power of the ClearCore before you connect the switches.
+\end{caution}
+
+\begin{procedure}{Connect a limit or home switch}
+\begin{enumerate}
+  \item Use a switch with a contact for the input voltage of the ClearCore
+        (24~V DC). Use normally closed contacts if possible.
+  \item Connect the switch between the 24~V supply and the input, as the
+        ClearCore manual shows for a digital input.
+  \item Put the limit switch where the carriage trips it before the end of the
+        travel. Keep the stop distance $d$ (section~\ref{sec:switch-rules})
+        between the switch and the end.
+  \item Write down the input of each switch. The wizard finds them again, so
+        a mistake here is not a problem.
+\end{enumerate}
+\end{procedure}
+
+\section{Set Up the Switches With the Wizard}\label{sec:switch-wizard}
+
+The desktop app has a wizard that finds each switch, reads its contact, and
+proves each one by motion. It sets one axis at a time. Do it again for the
+other axis.
+
+\begin{procedure}{Set up the switches of an axis}
+\begin{enumerate}
+  \item Connect the app to the plotter (section~\ref{sec:app-connect}).
+  \item Select \menu{Plotter\,>\,Set up limits and homing\ldots}.
+  \item \menu{Axis}: select X or Y and the switches that the axis has. If the
+        axis homes on a limit switch, select it in \menu{Home switch is}.
+        Keep the setup jog speed low (10~mm/s). Click \menu{Next}.
+  \item \menu{Find each switch}: click \menu{Find} for a switch, then trip
+        the switch by hand for approximately one second and release it. The
+        wizard shows the input that changed. Do this for each switch.
+  \item \menu{Contact}: make sure that the contact of each switch is correct.
+        The wizard reads it from the level at rest.
+  \item \menu{Direction}: click \menu{Enable motors}. Hold \menu{Hold: jog +}
+        until a switch stops the axis, then hold \menu{Hold: jog -}. The
+        plotter stops at the first switch of the axis. If the axis goes
+        toward + and stops on the - limit, the wizard asks a question:
+        \begin{itemize}
+          \item If the head went to the - end, click \menu{The head went the
+                other way: reverse the axis}. The wizard changes \key{dir_x}
+                or \key{dir_y} and disables the motors. Enable them and jog
+                again.
+          \item If the head went to the + end, click \menu{I tripped them the
+                wrong way round: swap them}.
+        \end{itemize}
+  \item \menu{Limits}: the wizard writes the limits to the plotter. Hold the
+        jog until each limit stops the axis, then jog back off it. The wizard
+        shows how far the axis moved past each switch.
+  \item \menu{Home}: make sure that the home direction is correct. Set the
+        position of the axis at the switch: 0 for a switch at the 0 end of the
+        plot area, or the width (or height) for a switch at the far end. Click
+        \menu{Write and home}. The plotter homes the axis the number of times
+        that you set, and the wizard shows the spread of the positions.
+  \item \menu{Review}: select \menu{Home before plotting} if the plotter must
+        home before each job after power-up. Click \menu{Apply}.
+\end{enumerate}
+\end{procedure}
+
+\begin{note}
+\notelabel The Limits and Home steps write their settings to the plotter
+immediately. \menu{Close} does not remove them. To remove a switch, set its
+input to \code{none} in \menu{Plotter settings}.
+\end{note}
+
+\section{Set Up the Switches in the Console}
+
+You can also set the switches with \cmd{set}. This example has a normally
+closed X- limit on \conn{DI-7}, which is also the X home switch, and a
+normally closed Y- limit and home switch on \conn{DI-8}:
+
+\begin{lstlisting}[language=console]
+set x_limit_minus DI-7
+set x_home DI-7
+set y_limit_minus DI-8
+set y_home DI-8
+set x_home_dir -1
+set y_home_dir -1
+set home_mode 1
+home
+\end{lstlisting}
+
+Use \cmd{swinfo} to see the levels of the inputs, the state of each switch,
+the limit stops, and the last homing (appendix~\ref{app:console}).
+
+\section{Homing}\label{sec:homing}
+
+\cmd{home} (or \menu{Home} in the app) homes each axis that has a home switch.
+\cmd{home x} or \cmd{home y} homes one axis. For each axis, in the sequence
+that \key{home_order} sets, the board:
+
+\begin{enumerate}
+  \item Raises the pen, if it is down.
+  \item Moves off the home switch, if the switch is tripped.
+  \item Moves toward the switch at \key{x_home_fast} until the switch trips.
+        If it does not trip within \key{x_home_travel} (or 1.2 times the
+        plot area plus 20~mm), homing stops with an error.
+  \item Moves back until the switch releases, then \key{x_home_back} more.
+  \item Moves toward the switch at \key{x_home_slow} until it trips again.
+  \item Sets the position where the switch tripped to \key{x_home_at}. The
+        position is a whole number of steps, so each homing gives the same
+        result.
+\end{enumerate}
+
+The head stops a small distance past the switch. Homing lasts for each axis
+approximately the search distance divided by the search speed, plus a few
+seconds.
+
+\begin{procedure}{Home before each job}
+\begin{enumerate}
+  \item Set up homing (section~\ref{sec:switch-wizard}).
+  \item Type \cmd{set home_required 1}, or select \menu{Home before
+        plotting} in the wizard.
+  \item Send a job. If the axes are not homed, the board homes them first and
+        then plots. While it homes, the state is \code{homing}.
+\end{enumerate}
+\end{procedure}
+
+The board forgets the homed position when you disable the motors, when the
+emergency stop opens, when a servo has a fault, and when you set the origin.
+The servos can move when they are disabled, so the position is not sure after
+that.
+
+\paragraph{ClearPath hard-stop homing.} With \key{home_mode}~2, the ClearPath
+servos home themselves against a hard stop, with no switch. This is for
+Cartesian machines only, because each servo homes one axis.
+
+\begin{procedure}{Use ClearPath hard-stop homing}
+\begin{enumerate}
+  \item In ClearPath MSP, set homing for each servo of X and Y. Set it to home
+        on every enable.
+  \item Type \cmd{set hlfb_check 1}. The board sees the end of homing on HLFB.
+  \item Type \cmd{set x_home_at 0} and \cmd{set y_home_at 0}, or the positions
+        where the hard stops are.
+  \item Type \cmd{set home_mode 2}.
+  \item Type \cmd{home}. The board disables the servos, enables them again,
+        and waits up to 120~seconds for HLFB. Then it sets the position.
+\end{enumerate}
+\end{procedure}
+
+\section{Homing Errors}
+
+\begin{table}[htbp]
+\centering
+\caption{Homing errors}\label{tab:homing-errors}
+\begin{tabularx}{\linewidth}{@{}P{0.42\linewidth}L@{}}
+\toprule
+\textbf{Message} & \textbf{Action} \\
+\midrule
+\code{X home switch not found within the search travel} & Make sure that the
+switch operates (\cmd{swinfo}) and that \key{x_home_dir} goes toward it.
+Increase \key{x_home_travel}. \\
+\code{limit X- reached before the home switch} & The home switch is beyond the
+limit, or \key{x_home_dir} is wrong. \\
+\code{X home switch did not release} & The switch stays tripped. Examine the
+switch and its wire. Increase \key{x_home_back}. \\
+\code{X home switch lost on the slow approach} & The switch did not trip again.
+Increase \key{x_home_back}, or examine the switch for bounce. \\
+\code{no X home switch (set x_home)} & \cmd{home x} needs a home switch. \\
+\code{ClearPath homing did not finish (HLFB not asserted)} & Examine the homing
+settings in MSP and the HLFB cable. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Test Without Switches}\label{sec:sim-switches}
+
+\cmd{sim} simulates a switch on an input, for a test on the bench. A simulated
+switch is fixed to the machine: it stays at the same place when homing or
+\cmd{origin} changes the position.
+
+\begin{procedure}{Test homing with a simulated switch}
+\begin{enumerate}
+  \item Type \cmd{set x_home A-9}, \cmd{set x_home_dir -1}, and
+        \cmd{set home_mode 1}.
+  \item Type \cmd{sim A-9 x- 30}. A switch is now 30~mm from the head, on the
+        - side of X.
+  \item Type \cmd{enable}, then \cmd{home x}.
+  \item Type \cmd{swinfo}. Make sure that the \code{home} line shows
+        \code{homed=1} and \code{last=ok}.
+  \item Type \cmd{sim clear}. Set the settings back.
+\end{enumerate}
+\end{procedure}

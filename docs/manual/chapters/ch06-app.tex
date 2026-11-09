@@ -39,7 +39,9 @@ Figure~\ref{fig:main} shows the main window. It has four areas:
   \item[Connection] The link to the board: \menu{Transport}, the plotter
         address or port, \menu{Discover}, and \menu{Connect}.
   \item[Plotter] The machine buttons: \menu{Enable}, \menu{Disable},
-        \menu{Abort}, \menu{Pause}, \menu{Set origin}, and \menu{Clear fault}.
+        \menu{Abort}, \menu{Pause}, \menu{Set origin}, \menu{Clear fault}, and
+        \menu{Home}. \menu{Home} is available when homing is set
+        (chapter~\ref{ch:limits}).
         Below them are the \menu{Plot} tab and the \menu{Jog} tab.
   \item[Plot area] A 3D view of the bed, the drawing, and the pen.
   \item[Status bar] The state of the link and of the machine.
@@ -52,7 +54,7 @@ Figure~\ref{fig:main} shows the main window. It has four areas:
 \caption{The main window of the ClearHPGL app, before a connection}\label{fig:main}
 \end{figure}
 
-\section{Connect to the Plotter}
+\section{Connect to the Plotter}\label{sec:app-connect}
 
 The app connects over Ethernet or over a serial port.
 
@@ -82,7 +84,9 @@ client. While the app is connected, a terminal cannot use port 9300.
 \end{procedure}
 
 When the app is connected, the status bar shows the state of the machine
-(for example \code{idle}, \code{plotting}, or \code{fault}). The 3D view shows
+(for example \code{idle}, \code{plotting}, \code{homing}, or \code{fault}).
+With homing set, it also shows \code{homed} or \code{not homed}, and
+\code{ON LIMIT X+} (for example) while a limit switch is tripped. The 3D view shows
 the pen at its present position.
 
 \section{Open a Drawing}
@@ -323,6 +327,13 @@ over any link.
 records, and sets it back when it stops. It saves nothing in the servo, and
 it never enables or moves the motor.
 \end{note}
+
+\section{Limits and Homing}
+
+\menu{Plotter\,>\,Set up limits and homing\ldots} opens the wizard that finds
+the limit and home switches of an axis and proves them by motion.
+Section~\ref{sec:switch-wizard} tells how to use it. The settings are also in
+the \menu{Limits and homing} part of \menu{Plotter settings}.
 
 \section{Other Functions}
 

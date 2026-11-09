@@ -39,3 +39,6 @@ __pycache__/
 
 # Host test build
 /Firmware/tests/build/
+
+# Installer output (installer/build_installer.ps1)
+/dist/

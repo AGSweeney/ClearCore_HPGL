@@ -13,8 +13,29 @@ board plots without it. With the app, you can:
 
 \section{Install the App}
 
-The app is built from the source repository. You need Visual Studio 2022,
-CMake, and Qt~6 from vcpkg.
+The installer \file{ClearHPGL-}\textit{version}\file{-setup.exe} is on the
+Releases page of the source repository
+(\url{https://github.com/AGSweeney/ClearCore_HPGL/releases}). It is for
+Windows 10 and 11, 64-bit. It installs the app, the firmware of the same
+version with its flash tool, and this manual.
+
+\begin{procedure}{Install the app}
+\begin{enumerate}
+  \item Download the installer from the Releases page.
+  \item Start it. Select an installation for all users (administrator) or
+        for you only.
+  \item Accept the license, and click \menu{Install}.
+  \item Start the app from the Start menu entry \menu{ClearHPGL}.
+\end{enumerate}
+\end{procedure}
+
+The Start menu also has the manual, the firmware directory, and
+\menu{Flash the ClearCore firmware (USB)} (section~\ref{sec:fw-cmd}). To
+remove the app, use \menu{Settings\,>\,Apps} in Windows. The settings of the
+board stay on the board.
+
+You can also build the app from the source repository. You need Visual Studio
+2022, CMake, and Qt~6 from vcpkg.
 
 \begin{procedure}{Build and install the app}
 \begin{enumerate}

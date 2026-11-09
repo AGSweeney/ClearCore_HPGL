@@ -76,17 +76,19 @@ Watch the [screen recording of the desktop app on YouTube](https://www.youtube.c
 
 ## Getting started
 
-1. **Flash the firmware** to a USB-connected ClearCore, from the app (**Plotter → Update board firmware**) or from the source:
+1. **Install the app.** Download `ClearHPGL-<version>-setup.exe` from [Releases](https://github.com/AGSweeney/ClearCore_HPGL/releases) (Windows 10/11, 64-bit). It installs the app, the matching ClearCore firmware with its flasher, and the user's manual.
+
+2. **Flash the firmware** to a USB-connected ClearCore, from the app (**Plotter → Update board firmware**) or from the source:
 
    ```powershell
    ./Firmware/build.ps1 -Flash
    ```
 
-2. **Configure the machine.** Open the USB port in a serial terminal and type `menu`. Use `config` to list the settings and `set <key> <value>` to change them. The essentials are steps per revolution and travel per revolution for each axis, the bed size, and speeds.
+3. **Configure the machine.** Open the USB port in a serial terminal and type `menu`. Use `config` to list the settings and `set <key> <value>` to change them. The essentials are steps per revolution and travel per revolution for each axis, the bed size, and speeds.
 
    The board uses DHCP by default. For a static address, `set net_mode 1`, set `ip`, `netmask` and `gateway`, then `restart`.
 
-3. **Plot**, from `cmd.exe` or the command-line client:
+4. **Plot**, from `cmd.exe` or the command-line client:
 
    ```powershell
    copy /b drawing.plt COM3
@@ -141,7 +143,7 @@ Still to build:
 - [Firmware/PROTOCOL.md](Firmware/PROTOCOL.md): connections and ports, supported HP-GL and HP-GL/2, device control, console commands, every setting with its default, and faults.
 - `python Firmware/host/clearhpgl_cli.py --help`: the command-line client (discover, send, query, console).
 
-**Not supported yet:** text (`LB`), area fills, line types and pen widths, homing and limit switches, and automatic pen changes.
+**Not supported yet:** text (`LB`), area fills, line types and pen widths, soft limits, and automatic pen changes.
 
 ## Building and testing
 
@@ -161,6 +163,15 @@ Still to build:
 ```
 
 Or open `Firmware/ClearCoreFirmware/ClearHPGL_Firmware.atsln` in Microchip Studio.
+
+### Installer
+
+```powershell
+./installer/build_installer.ps1             # firmware, app, then dist\ClearHPGL-<version>-setup.exe (Inno Setup 6)
+./installer/build_installer.ps1 -SkipBuild  # package what is built already
+```
+
+The version is the firmware's (`CHPGL_FIRMWARE_VERSION` in `Firmware/ClearCoreFirmware/PlotterConfig.h`): the app and the firmware ship together.
 
 ### Tests
 
@@ -182,6 +193,8 @@ python Firmware/host/fake_plotter.py --bind 127.0.0.1   # stand-in board for tes
 | `tests/` | App test tools |
 | `libClearCore/`, `LwIP/` | ClearCore library and TCP/IP stack the firmware builds on |
 | `tools/` | Flashing and UF2 tools |
+| `installer/` | Inno Setup script and the script that builds the installer |
+| `docs/manual/` | The user's manual (LaTeX source and PDF) |
 
 ## License
 

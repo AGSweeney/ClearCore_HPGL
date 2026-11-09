@@ -117,7 +117,7 @@ class Plotter:
                 self.fault = "none"
                 return ["ok"]
             elif cmd == "version":
-                return ["ClearHPGL_Firmware 0.1.0 (fake)", "ok"]
+                return ["ClearHPGL_Firmware 0.2.0 (fake)", "ok"]
             elif cmd in ("exit", "quit"):
                 return ["ok"]
             else:
@@ -219,7 +219,7 @@ def discovery(bind):
     while True:
         data, addr = s.recvfrom(256)
         if data.startswith(b"CLEARHPGL_DISCOVER?"):
-            s.sendto(b"CLEARHPGL ClearHPGL_Firmware IP=127.0.0.1 HPGL=9100 CONSOLE=9300 FW=0.1.0-fake "
+            s.sendto(b"CLEARHPGL ClearHPGL_Firmware IP=127.0.0.1 HPGL=9100 CONSOLE=9300 FW=0.2.0-fake "
                      b"IDENT=7475A", addr)
 
 

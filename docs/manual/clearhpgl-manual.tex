@@ -6,7 +6,7 @@
 \input{preamble}
 
 \newcommand{\docnumber}{CH-UM-100}
-\newcommand{\docrevision}{Revision A}
+\newcommand{\docrevision}{Revision B}
 \newcommand{\fwversion}{0.1.0}
 \newcommand{\docdate}{November 2026}
 
@@ -122,11 +122,13 @@ Technical English for its text and \textit{The Chicago Manual of Style},
 numbers, captions, notes, and bibliography. The preface gives the details.
 
 \bigskip
-\begin{tabular}{@{}ll@{}}
+\begin{tabular}{@{}lp{0.68\linewidth}@{}}
 \toprule
 \textbf{Revision} & \textbf{Change} \\
 \midrule
 A, \docdate & First issue, for firmware version \fwversion. \\
+B, \docdate & CoreXY and H-bot machines: settings \key{kinematics}, \key{swap_xy},
+and \key{motor_max_mm_s}. \cmd{origin} restarts the motor step counters. \\
 \bottomrule
 \end{tabular}
 }

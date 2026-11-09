@@ -16,7 +16,8 @@ It comes with **ClearHPGL**, an optional Windows desktop app for previewing draw
 - **Plots from standard drivers.** Behaves like an HP 7475A or DraftMaster, so existing HP-GL and HP-GL/2 plotter drivers just work.
 - **Three ways in.** USB virtual COM port, RS-232/TTL serial, or a raw TCP print port (9100).
 - **Fixes CAD path order.** Buffers each job, joins broken outlines, cuts holes before outlines and takes the shortest route between shapes.
-- **Smooth, coordinated motion.** Two-axis interpolation with lookahead, so curves flow at speed instead of stopping at every vertex.
+- **Smooth, coordinated motion.** Two-axis interpolation with lookahead, so curves flow at speed instead of stopping at every vertex. True arcs, not chords.
+- **Cartesian or CoreXY.** One motor per axis, or a CoreXY / H-bot gantry (`set kinematics 1`), with each motor kept within its own speed limit.
 - **Safety in the loop.** E-stop input, servo alerts and servo ready signals stop the machine and latch a fault.
 - **Desktop app.** DXF and HP-GL preview with the firmware's own interpreter, live 3D view, job monitoring and machine setup.
 

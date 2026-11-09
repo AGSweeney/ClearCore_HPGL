@@ -30,6 +30,8 @@ jobs), \textbf{disabled} (with the motors disabled), or \textbf{restart}
 \key{mm_rev_y} & 5.0 & 0.001--10,000 & disabled & Y travel per motor revolution, mm. \\
 \key{dir_x} & 1 & 1 or -1 & disabled & Direction of X. -1 reverses it. \\
 \key{dir_y} & 1 & 1 or -1 & disabled & Direction of Y. -1 reverses it. \\
+\key{kinematics} & 0 & 0 or 1 & disabled & 0: Cartesian (\conn{M0} = X, \conn{M1} = Y). 1: CoreXY or H-bot (\conn{M0} = A, \conn{M1} = B). Section~\ref{sec:corexy}. A change sets the origin. \\
+\key{swap_xy} & 0 & 0 or 1 & disabled & 1: exchange the X and Y axes. A change sets the origin. \\
 \key{width_mm} & 400 & 1--100,000 & idle & Plot area in X (the hard clip), mm. \\
 \key{height_mm} & 300 & 1--100,000 & idle & Plot area in Y (the hard clip), mm. \\
 \end{longtable}
@@ -53,7 +55,8 @@ jobs), \textbf{disabled} (with the motors disabled), or \textbf{restart}
 \key{max_mm_s} & 250 & 0.1--10,000 & live & Highest speed that \cmd{VS} can set, mm/s. \\
 \key{job_speed} & 1 & 0 or 1 & live & 1: \cmd{VS} in a job sets the pen-down speed. 0: always \key{draw_mm_s}. \\
 \key{accel_mm_s2} & 2000 & 1--1,000,000 & live & Acceleration along the path, mm/s\textsuperscript{2}. Also limits the speed on curves. \\
-\key{corner_mm_s} & 20 & 0--10,000 & live & Largest change of speed of one axis at a corner, mm/s. \\
+\key{corner_mm_s} & 20 & 0--10,000 & live & Largest change of speed of one motor at a corner, mm/s. \\
+\key{motor_max_mm_s} & 0 & 0--10,000 & live & Highest speed of a motor, as belt travel in mm/s. 0: no limit. Use it for CoreXY. \\
 \end{longtable}
 
 \section{Pen}

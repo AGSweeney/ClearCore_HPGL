@@ -13,7 +13,7 @@
 /* User-page blob. Magic differs from ClearAI ('CAIC') and ClearCoreROS ('CROS')
  * so a blob left by either is ignored instead of misread. */
 static const uint32_t CHPGL_NVM_MAGIC = 0x47504843u; /* 'CHPG' */
-static const uint16_t CHPGL_NVM_VERSION = 3;
+static const uint16_t CHPGL_NVM_VERSION = 4;
 
 static_assert(sizeof(PlotterSettings) <= ClearCore::NvmManager::NVM_LOC_RESERVED_TEKNIC,
               "settings blob must fit below the Teknic reserved area");
@@ -66,6 +66,9 @@ void SettingsDefaults() {
     g_settings.autoEnable = 1;
     g_settings.optimize = 3;  /* USB and COM: jobs from CAD drivers; the app orders its own */
     g_settings.jobSpeed = 1;
+    g_settings.kinematics = 0;
+    g_settings.swapXy = 0;
+    g_settings.motorMaxMmS = 0.0f;
     g_settings.hlfbCheck = 1;
     g_settings.comPort = 0;
     g_settings.comBaud = 9600;
@@ -138,6 +141,7 @@ void SettingsLoad() {
         0,
         offsetof(PlotterSettings, optimize),  /* version 1 */
         offsetof(PlotterSettings, jobSpeed),  /* version 2 */
+        offsetof(PlotterSettings, kinematics),  /* version 3 */
     };
     if (s.magic == CHPGL_NVM_MAGIC && s.version >= 1 && s.version < CHPGL_NVM_VERSION &&
         s.size == kFieldsEnd[s.version] + 4) {
@@ -153,7 +157,12 @@ void SettingsLoad() {
             if (s.version < 2) {
                 s.optimize = 3;
             }
-            s.jobSpeed = 1;
+            if (s.version < 3) {
+                s.jobSpeed = 1;
+            }
+            s.kinematics = 0;
+            s.swapXy = 0;
+            s.motorMaxMmS = 0.0f;
             s.version = CHPGL_NVM_VERSION;
             s.size = sizeof(PlotterSettings);
             s.checksum = Checksum(&s);
@@ -245,6 +254,8 @@ static const KeyDef kKeys[] = {
     {"mm_rev_y", K_F32, OFS(mmPerRev[1]), 0.001, 10000, KF_DISABLED, "Y travel per motor revolution (mm)"},
     {"dir_x", K_I8, OFS(dir[0]), -1, 1, KF_DISABLED, "1 or -1: flip X"},
     {"dir_y", K_I8, OFS(dir[1]), -1, 1, KF_DISABLED, "1 or -1: flip Y"},
+    {"kinematics", K_U8, OFS(kinematics), 0, 1, KF_DISABLED, "0 Cartesian (M0 X, M1 Y), 1 CoreXY/H-bot (M0 A, M1 B)"},
+    {"swap_xy", K_U8, OFS(swapXy), 0, 1, KF_DISABLED, "1 = exchange the X and Y axes"},
     /* The plot area is only the hard clip: it can change with the motors enabled, but not mid-job. */
     {"width_mm", K_F32, OFS(areaMm[0]), 1, 100000, KF_IDLE, "plot area X (hard clip)"},
     {"height_mm", K_F32, OFS(areaMm[1]), 1, 100000, KF_IDLE, "plot area Y (hard clip)"},
@@ -252,7 +263,8 @@ static const KeyDef kKeys[] = {
     {"travel_mm_s", K_F32, OFS(travelMmS), 0.1, 10000, KF_LIVE, "pen-up speed"},
     {"max_mm_s", K_F32, OFS(maxMmS), 0.1, 10000, KF_LIVE, "upper limit for VS"},
     {"accel_mm_s2", K_F32, OFS(accelMmS2), 1, 1000000, KF_LIVE, "path acceleration"},
-    {"corner_mm_s", K_F32, OFS(cornerMmS), 0, 10000, KF_LIVE, "max per-axis speed change at a corner"},
+    {"corner_mm_s", K_F32, OFS(cornerMmS), 0, 10000, KF_LIVE, "max per-motor speed change at a corner"},
+    {"motor_max_mm_s", K_F32, OFS(motorMaxMmS), 0, 10000, KF_LIVE, "max motor speed as belt mm/s (0 = no limit)"},
     {"pen_mode", K_U8, OFS(penMode), 0, 1, KF_DISABLED, "0 = IO output, 1 = Z axis on M2"},
     {"pen_io", K_U8, OFS(penIo), 0, 5, KF_DISABLED, "pen output IO-0..IO-5 (pen_mode 0)"},
     {"pen_active_high", K_U8, OFS(penActiveHigh), 0, 1, KF_DISABLED, "1 = output on means pen down"},
@@ -379,6 +391,7 @@ const char *SettingsSet(const char *key, const char *value, bool motorsEnabled, 
     if ((k->flags & KF_IDLE) && jobActive) {
         return "a job is running; change it when the plotter is idle";
     }
+    const PlotterSettings before = g_settings;  /* restored if the combination is not valid */
     uint8_t *base = (uint8_t *)&g_settings + k->offset;
     if (k->type == K_IP) {
         uint8_t ip[4];
@@ -430,6 +443,15 @@ const char *SettingsSet(const char *key, const char *value, bool motorsEnabled, 
             }
             default:
                 break;
+        }
+    }
+    /* CoreXY: one Cartesian step is one step of belt, so both motors need the same scale. */
+    if (g_settings.kinematics == 1) {
+        const double sx = SettingsStepsPerMm(0);
+        const double sy = SettingsStepsPerMm(1);
+        if ((sx > sy ? sx - sy : sy - sx) > 1e-6 * sx) {
+            g_settings = before;
+            return "CoreXY needs the same steps per mm on X and Y";
         }
     }
     if (needsRestart) {

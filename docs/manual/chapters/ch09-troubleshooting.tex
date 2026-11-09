@@ -85,8 +85,12 @@ optimizer: idle  last job: 3 strokes -> 3 paths, pen-up travel 136 -> 127 mm
         times it used more than \SI{150}{\micro s} of its \SI{200}{\micro s}
         period. If the interrupt is too long, a motor can jump. A value near
         \SI{200}{\micro s} is a problem.
-  \item[controller, pulses\_sent] The position of the planner and the pulses
-        sent to each motor. They must be the same.
+  \item[controller, pulses\_sent] The position of the planner, and the pulses
+        sent to each motor since power-up or the last \cmd{origin}. The value
+        ``as x, y'' changes the pulses back to X and Y (for CoreXY,
+        X = (A + B) / 2 and Y = (A $-$ B) / 2). It must be the same as the
+        position of the planner. The line also shows \key{kinematics} and
+        \key{swap_xy}.
   \item[optimizer] The last job: strokes, paths, and the pen-up travel before
         and after the optimizer.
 \end{description}

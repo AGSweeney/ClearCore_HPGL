@@ -65,6 +65,11 @@ struct PlotterSettings {
 
     /* Added in version 3. */
     uint8_t jobSpeed;    /* 1 honour VS from jobs, 0 always draw at drawMmS */
+
+    /* Added in version 4. */
+    uint8_t kinematics;  /* 0 Cartesian (M0 = X, M1 = Y), 1 CoreXY / H-bot (M0 = A, M1 = B) */
+    uint8_t swapXy;      /* 1 exchange the X and Y axes (with dir: any belt or motor layout) */
+    float motorMaxMmS;   /* highest motor speed as belt travel (mm/s); 0 = no limit */
     uint32_t checksum;
 };
 #pragma pack(pop)

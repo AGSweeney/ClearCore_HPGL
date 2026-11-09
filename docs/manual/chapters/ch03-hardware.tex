@@ -41,8 +41,8 @@ with the default settings.
 \toprule
 \textbf{Connector} & \textbf{Function} & \textbf{Setting} \\
 \midrule
-\conn{M0} & X axis, ClearPath, step and direction & \key{steps_rev_x}, \key{mm_rev_x}, \key{dir_x} \\
-\conn{M1} & Y axis, ClearPath, step and direction & \key{steps_rev_y}, \key{mm_rev_y}, \key{dir_y} \\
+\conn{M0} & X axis (CoreXY: motor A), ClearPath, step and direction & \key{steps_rev_x}, \key{mm_rev_x}, \key{dir_x}, \key{kinematics} \\
+\conn{M1} & Y axis (CoreXY: motor B), ClearPath, step and direction & \key{steps_rev_y}, \key{mm_rev_y}, \key{dir_y}, \key{swap_xy} \\
 \conn{M2} & Pen lift servo (optional) & \key{pen_mode}~1 and the \key{z_*} settings \\
 \conn{IO-0} & Pen lift output (default) & \key{pen_mode}~0, \key{pen_io}, \key{pen_active_high} \\
 \conn{DI-6} & Emergency stop input & \key{estop_di6} \\
@@ -125,6 +125,44 @@ your servos do not supply HLFB.
 scale of the X axis for the speed and the acceleration of the path. Arcs
 operate as true arcs only when the two scales are the same.
 \end{note}
+
+\section{CoreXY and H-Bot Machines}\label{sec:corexy}
+
+In a \term{CoreXY} or an H-bot machine, the two motors do not each drive one
+axis. Two belts move the head together: when both motors turn the same
+direction, the head moves in X; when they turn in opposite directions, it
+moves in Y. One motor alone moves the head diagonally.
+
+Set \key{kinematics} to 1 for these machines. The board then plans and draws
+in X and Y as usual, and sends these step counts to the motors:
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Connector} & \textbf{Motor} & \textbf{Steps} \\
+\midrule
+\conn{M0} & A & X + Y \\
+\conn{M1} & B & X $-$ Y \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}
+  \item Both motors must have the same steps per millimeter of belt. The board
+        refuses \key{kinematics}~1 if \key{steps_rev_x}/\key{mm_rev_x} and
+        \key{steps_rev_y}/\key{mm_rev_y} are different.
+  \item On a 45° move, one motor does all the work. It turns 1.41 times faster
+        than the head moves, and accelerates 1.41 times faster. Set
+        \key{motor_max_mm_s} to the highest belt speed that your motors can
+        hold. The board then decreases the speed of each segment that would
+        make a motor go faster.
+  \item \key{corner_mm_s} limits the change of speed of each motor at a corner.
+\end{itemize}
+
+The direction of each motor and the sequence of the belts change how the
+head moves. The settings \key{dir_x}, \key{dir_y}, and \key{swap_xy}
+(exchange X and Y) correct all the possible layouts. You do not have to
+change the wiring. Section~\ref{sec:corexy-check} gives the procedure.
 
 \section{Pen Lift}
 

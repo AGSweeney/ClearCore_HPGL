@@ -141,6 +141,49 @@ commands.
 \end{enumerate}
 \end{procedure}
 
+\subsection{CoreXY and H-Bot Machines}\label{sec:corexy-check}
+
+On a CoreXY or an H-bot machine (section~\ref{sec:corexy}), set the
+kinematics first. Then find the correct directions with this procedure.
+
+\begin{warning}
+With the wrong kinematics or directions, the head can move in a direction
+that you do not expect. Use a low speed and short moves, and keep the head
+away from the ends of its travel.
+\end{warning}
+
+\begin{procedure}{Set the kinematics and the directions of a CoreXY machine}
+\begin{enumerate}
+  \item Type \cmd{disable}.
+  \item Type \cmd{set kinematics 1}. The present position becomes the origin.
+  \item Type \cmd{set draw_mm_s 20} and \cmd{set travel_mm_s 20}.
+  \item Type \cmd{enable}, then \cmd{goto 20 0}.
+  \item Look at the movement of the head, and find it in
+        table~\ref{tab:corexy-fix}.
+  \item Type \cmd{disable}, then do the correction in the table.
+  \item Type \cmd{origin}, and do steps 4 to 6 again until the head moves
+        \SI{20}{mm} to the right.
+  \item Type \cmd{goto 20 20}. The head must move \SI{20}{mm} up (positive Y).
+        If it moves down, type \cmd{disable}, set \key{dir_y} to the other
+        value, type \cmd{origin}, and do this step again from \cmd{goto 20 0}.
+\end{enumerate}
+\end{procedure}
+
+\begin{table}[htbp]
+\centering
+\caption{Corrections for a CoreXY machine after \cmd{goto 20 0}}\label{tab:corexy-fix}
+\begin{tabularx}{\linewidth}{@{}P{0.38\linewidth}L@{}}
+\toprule
+\textbf{The head moves} & \textbf{Correction} \\
+\midrule
+Right (positive X) & Correct. Go to the last step. \\
+Left (negative X) & Set \key{dir_x} to the other value (1 or -1). \\
+Up or down (Y) & Set \key{swap_xy} to the other value (0 or 1). \\
+Diagonally & \key{kinematics} is not 1, or the belts are not a CoreXY or H-bot layout. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \section{Set the Pen Lift}
 
 \begin{procedure}{Set and test the pen lift}
@@ -175,7 +218,8 @@ you can change them during a test plot and see the result.
 \key{max_mm_s} & 250 mm/s & Highest pen-down speed that a job can ask for with \cmd{VS}. \\
 \key{job_speed} & 1 & 1: the speed in the job (\cmd{VS}) sets the pen-down speed. 0: always use \key{draw_mm_s}. \\
 \key{accel_mm_s2} & 2000 mm/s\textsuperscript{2} & Acceleration along the path. It also limits the speed on curves. \\
-\key{corner_mm_s} & 20 mm/s & Largest change of speed of one axis at a corner. A larger value gives faster corners and more shock to the machine. \\
+\key{corner_mm_s} & 20 mm/s & Largest change of speed of one motor at a corner. A larger value gives faster corners and more shock to the machine. \\
+\key{motor_max_mm_s} & 0 (none) & Highest speed of a motor, as belt travel. For CoreXY, where a motor can turn 1.41 times faster than the head moves. \\
 \bottomrule
 \end{tabularx}
 \end{table}

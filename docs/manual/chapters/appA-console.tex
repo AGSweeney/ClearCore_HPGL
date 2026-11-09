@@ -34,8 +34,8 @@ disabled. \\
 \cmd{abort} & Stop now, drop the job, and raise the pen. \\
 \cmd{pause} & Stop at the end of the segments in the queue, and raise the pen. \\
 \cmd{resume} & Lower the pen and continue after \cmd{pause}. \\
-\cmd{origin} & The present position becomes plotter 0,0. No job can be
-plotting. \\
+\cmd{origin} & The present position becomes plotter 0,0, and the step counters
+of the motors restart at 0. No job can be plotting. \\
 \cmd{goto} \textit{x\_mm y\_mm} & Move to the position with the pen up. No job
 can be plotting. The position stays in the plot area. \\
 \cmd{pen up}, \cmd{pen down} & Raise or lower the pen to test it. No job can

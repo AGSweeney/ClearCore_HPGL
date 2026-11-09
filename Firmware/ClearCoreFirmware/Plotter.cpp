@@ -147,6 +147,42 @@ static void SyncTailFromMotion() {
     g_prevDirValid = false;
 }
 
+/* Plotter axes (HP-GL X and Y in steps, signs from dir_x / dir_y) to the motion controller's X
+ * and Y, and back. swap_xy exchanges them. With dir_x and dir_y that gives all eight ways a
+ * machine can be built or wired: in CoreXY, exchanging motors A and B mirrors Y, and reversing
+ * one motor exchanges X and Y and mirrors both. The controller then maps its X/Y onto the
+ * motors (Cartesian: M0 = X, M1 = Y; CoreXY: M0 = A = X + Y, M1 = B = X - Y). Everything above
+ * this (queue tail, curvature, arcs) works in controller coordinates; the exchange keeps
+ * lengths and angles, and only mirrors the direction of arcs. */
+static bool g_swapXy = false;
+
+static void AxisToCtrl(int32_t ax, int32_t ay, int32_t *cx, int32_t *cy) {
+    *cx = g_swapXy ? ay : ax;
+    *cy = g_swapXy ? ax : ay;
+}
+
+static void CtrlToAxis(int32_t cx, int32_t cy, int32_t *ax, int32_t *ay) {
+    *ax = g_swapXy ? cy : cx;
+    *ay = g_swapXy ? cx : cy;
+}
+
+/* Head position in plotter units of each HP-GL axis. */
+static void HeadPu(double *xPu, double *yPu) {
+    int32_t ax, ay;
+    CtrlToAxis(g_xy.CurrentX(), g_xy.CurrentY(), &ax, &ay);
+    *xPu = (double)ax / g_stepsPerPu[0];
+    *yPu = (double)ay / g_stepsPerPu[1];
+}
+
+/* The present position becomes 0,0, and the motors' step counters restart at 0 so that diag can
+ * compare them with the head position. Motors stopped and nothing queued. */
+static void ZeroPosition() {
+    g_xy.SetPosition(0, 0);
+    ConnectorM0.PositionRefSet(0);
+    ConnectorM1.PositionRefSet(0);
+    SyncTailFromMotion();
+}
+
 /* Curves that are not native arcs (DXF tessellation, driver polylines, chorded HP-GL arcs)
  * arrive as short chords. The planner's per-axis corner limit (corner_mm_s)
  * is applied at every joint but not over time, so many small joints in a row add up to
@@ -337,8 +373,8 @@ public:
         g_prevDirValid = false;
     }
     void MoveTo(double xPu, double yPu) override {
-        const int32_t sx = (int32_t)lround(xPu * g_stepsPerPu[0]);
-        const int32_t sy = (int32_t)lround(yPu * g_stepsPerPu[1]);
+        int32_t sx, sy;
+        AxisToCtrl((int32_t)lround(xPu * g_stepsPerPu[0]), (int32_t)lround(yPu * g_stepsPerPu[1]), &sx, &sy);
         if (sx == g_tailX && sy == g_tailY) {
             return;
         }
@@ -357,10 +393,9 @@ public:
         if (fabs(fabs(kx) - fabs(ky)) > 1e-9 * fabs(kx) || g_count + 2 > CHPGL_ACTION_QUEUE) {
             return false;
         }
-        const int32_t cx = (int32_t)lround(cxPu * kx);
-        const int32_t cy = (int32_t)lround(cyPu * ky);
-        const int32_t ex = (int32_t)lround(exPu * kx);
-        const int32_t ey = (int32_t)lround(eyPu * ky);
+        int32_t cx, cy, ex, ey;
+        AxisToCtrl((int32_t)lround(cxPu * kx), (int32_t)lround(cyPu * ky), &cx, &cy);
+        AxisToCtrl((int32_t)lround(exPu * kx), (int32_t)lround(eyPu * ky), &ex, &ey);
         const double sx = (double)g_tailX - cx;
         const double sy = (double)g_tailY - cy;
         const double r = sqrt(sx * sx + sy * sy);
@@ -369,7 +404,8 @@ public:
         if (r < kMinArcRadiusSteps || fabs(sqrt(ux * ux + uy * uy) - r) > 2.0) {
             return false;
         }
-        const bool ccw = (sweepDeg > 0) != ((kx < 0) != (ky < 0));  /* one axis reversed mirrors */
+        /* One axis reversed mirrors the arc, and so does exchanging X and Y. */
+        const bool ccw = (sweepDeg > 0) != (((kx < 0) != (ky < 0)) != g_swapXy);
         double span = atan2(uy, ux) - atan2(sy, sx);
         if (!ccw) {
             span = -span;
@@ -420,8 +456,7 @@ public:
         }
     }
     void ActualPosition(double *xPu, double *yPu, bool *penDown) override {
-        *xPu = (double)g_xy.CurrentX() / g_stepsPerPu[0];
-        *yPu = (double)g_xy.CurrentY() / g_stepsPerPu[1];
+        HeadPu(xPu, yPu);
         *penDown = g_physPenDown;
     }
     void PageEnd() override {
@@ -461,9 +496,22 @@ void PlotterApplySettings() {
     g_sink.SetVelocity(0);
     g_accelSteps = g_settings.accelMmS2 * spmmX;
     g_xy.ArcAccelMax((uint32_t)g_accelSteps);
-    g_xy.JunctionDVmax((uint32_t)(g_settings.cornerMmS * spmmX));
+    g_xy.JunctionDVmax((uint32_t)(g_settings.cornerMmS * spmmX));  /* per motor (A/B in CoreXY) */
+    /* CoreXY: a motor runs up to sqrt(2) x the path speed (on a 45-degree move); this keeps each
+     * one within its limit by lowering the path speed of a segment where needed. */
+    const double motorMax = g_settings.motorMaxMmS * spmmX;
+    g_xy.MotorVelMax(g_settings.motorMaxMmS > 0 ? (motorMax < 1.0 ? 1u : (uint32_t)motorMax) : 0u);
     for (MotorDriver *m : {&ConnectorM0, &ConnectorM1}) {
         m->EStopDecelMax((uint32_t)(g_settings.accelMmS2 * spmmX * 2.0));
+    }
+    /* Kinematics and swap_xy change only with the motors disabled ([disabled] settings). The old
+     * X/Y means nothing in the new frame, so the present position becomes the origin. */
+    const CoordKinematics kin = g_settings.kinematics ? KINEMATICS_COREXY : KINEMATICS_CARTESIAN;
+    const bool swap = g_settings.swapXy != 0;
+    if ((kin != g_xy.Kinematics() || swap != g_swapXy) && !g_enabled && XyIdle()) {
+        g_xy.SetKinematics(kin);
+        g_swapXy = swap;
+        ZeroPosition();
     }
     if (!g_enabled) {
         ConnectorM2.VelMax(g_settings.zVelSteps);
@@ -488,7 +536,7 @@ bool PlotterInit() {
     }
     /* Always plan to a stop at the tail; later segments re-plan it. */
     g_xy.StopAtQueueEnd(true);
-    g_xy.SetPosition(0, 0);
+    ZeroPosition();
     PlotterApplySettings();
     g_ready = true;
     return true;
@@ -606,8 +654,7 @@ const char *PlotterSetOrigin() {
     if (!PlotterIdle()) {
         return "plotter busy";
     }
-    g_xy.SetPosition(0, 0);
-    SyncTailFromMotion();
+    ZeroPosition();
     return nullptr;
 }
 
@@ -719,8 +766,10 @@ static const char *StateName() {
 }
 
 void PlotterTelemetry(char *buf, size_t len) {
-    const double x = (double)g_xy.CurrentX() / g_stepsPerPu[0] / HPGL_PU_PER_MM;
-    const double y = (double)g_xy.CurrentY() / g_stepsPerPu[1] / HPGL_PU_PER_MM;
+    double x, y;
+    HeadPu(&x, &y);
+    x /= HPGL_PU_PER_MM;
+    y /= HPGL_PU_PER_MM;
     snprintf(buf, len, "TEL ms=%lu x=%.3f y=%.3f pen=%d state=%s queue=%u", (unsigned long)Milliseconds(), x, y,
              g_physPenDown ? 1 : 0, StateName(), (unsigned)g_count);
 }
@@ -749,9 +798,17 @@ void PlotterDiag(void (*out)(const char *line)) {
              (unsigned long)(g_xy.MaxUpdateCycles() / 120u), kKind[g_xy.MaxUpdateKind() & 3],
              (unsigned long)g_xy.SlowUpdates());
     out(buf);
-    snprintf(buf, sizeof(buf), "controller x=%ld y=%ld  pulses_sent M0=%ld M1=%ld",
-             (long)g_xy.CurrentX(), (long)g_xy.CurrentY(), (long)ConnectorM0.PositionRefCommanded(),
-             (long)ConnectorM1.PositionRefCommanded());
+    /* The pulses sent to each motor, mapped back to X/Y: equal to the controller position when
+     * nothing was lost (both start at 0 at power-up and at origin). */
+    const int32_t m0 = ConnectorM0.PositionRefCommanded();
+    const int32_t m1 = ConnectorM1.PositionRefCommanded();
+    int32_t px, py;
+    const bool onGrid = Kinematics::ToCartesian(g_xy.Kinematics(), m0, m1, px, py);
+    snprintf(buf, sizeof(buf),
+             "controller x=%ld y=%ld  pulses_sent M0=%ld M1=%ld (as x=%ld y=%ld%s)  kinematics=%s swap_xy=%d",
+             (long)g_xy.CurrentX(), (long)g_xy.CurrentY(), (long)m0, (long)m1, (long)px, (long)py,
+             onGrid ? "" : ", half step", g_xy.Kinematics() == KINEMATICS_COREXY ? "corexy" : "cartesian",
+             g_swapXy ? 1 : 0);
     out(buf);
     CoordinatedMotionController::BurstEvent ev[CoordinatedMotionController::BURST_LOG_SIZE];
     const uint8_t n = g_xy.BurstLog(ev, CoordinatedMotionController::BURST_LOG_SIZE);
@@ -770,8 +827,10 @@ void PlotterDiag(void (*out)(const char *line)) {
 
 void PlotterStatus(char *buf, size_t len) {
     const char *state = StateName();
-    const double x = (double)g_xy.CurrentX() / g_stepsPerPu[0] / HPGL_PU_PER_MM;
-    const double y = (double)g_xy.CurrentY() / g_stepsPerPu[1] / HPGL_PU_PER_MM;
+    double x, y;
+    HeadPu(&x, &y);
+    x /= HPGL_PU_PER_MM;
+    y /= HPGL_PU_PER_MM;
     snprintf(buf, len,
              "state=%s enabled=%d x_mm=%.3f y_mm=%.3f pen=%s sel_pen=%d queue=%u planner=%u "
              "segments=%lu arcs=%lu arc_fallbacks=%lu curve_capped=%lu dropped=%lu pages=%lu "

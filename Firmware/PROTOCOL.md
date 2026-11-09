@@ -115,7 +115,7 @@ These are answered as soon as they arrive, ahead of the buffer, the way a 7475A 
 
 | Item | Default |
 |------|---------|
-| X / Y | M0 / M1, ClearPath step and direction, HLFB bipolar PWM 482 Hz, coordinated by `CoordinatedMotionController` with junction lookahead |
+| X / Y | M0 / M1, ClearPath step and direction, HLFB bipolar PWM 482 Hz, coordinated by `CoordinatedMotionController` with junction lookahead. Cartesian (M0 = X, M1 = Y) or CoreXY / H-bot (`kinematics 1`: M0 = A = X+Y, M1 = B = X-Y) |
 | Mechanics | 800 steps/rev, 5 mm/rev (160 steps/mm), 400 × 300 mm |
 | Speeds | draw 100 mm/s, travel 200 mm/s, `VS` cap 250 mm/s, accel 2000 mm/s², corner Δv 20 mm/s |
 | Pen, `pen_mode 0` | IO-0 output, on = down, 150 ms down / 100 ms up settle |
@@ -124,6 +124,8 @@ These are answered as soon as they arrive, ahead of the buffer, the way a 7475A 
 | Enable | Automatic when a job arrives (`auto_enable 1`), with an HLFB check (`hlfb_check 1`) |
 
 Pen changes happen only with XY stopped. Segments between pen changes stream through the planner with lookahead. The planner always plans to a stop at its last queued segment, so a host that falls behind costs speed, not position. Path speed and acceleration use the X scale, so keep X and Y at the same steps/mm.
+
+**CoreXY / H-bot** (`kinematics 1`): the board plans and draws in X/Y as before and sends A = X+Y to M0 and B = X-Y to M1 (in steps). X and Y must have the same steps/mm (the board refuses `kinematics 1` otherwise). A motor runs up to 1.41 times the path speed and acceleration, on 45° moves; `motor_max_mm_s` (belt mm/s, 0 = no limit) lowers the path speed of a segment so that no motor exceeds it. `corner_mm_s` limits the speed change of each motor at a corner. To match the belts and motors of the machine, use `dir_x`, `dir_y` and `swap_xy` (exchange X and Y): together they cover every layout (exchanging motors A and B mirrors Y; reversing one motor exchanges X and Y and mirrors both). Changing `kinematics` or `swap_xy` makes the present position plotter 0,0.
 
 **Faults:**
 - **DI-6 trip, motor alert or HLFB failure:** the motors disable and the rest of the job is dropped. A TCP job is closed; a serial job is discarded until its source is quiet for 2 s. The fault latches until `clear` or `enable`.
@@ -142,7 +144,7 @@ Every command ends with a line starting `ok` or `error:`.
 | `enable` / `disable` | motor enable |
 | `abort` | stop, drop the current job, raise the pen |
 | `pause` / `resume` | see above |
-| `origin` | current position becomes plotter 0,0 |
+| `origin` | current position becomes plotter 0,0; the motors' step counters (`pulses_sent` in `diag`) restart at 0 |
 | `goto <x_mm> <y_mm>` | pen-up move (no job running) |
 | `pen up` / `pen down` | pen test (no job running) |
 | `clear` | clear a latched fault |
@@ -159,9 +161,12 @@ Stored in the NVM user page with magic `CHPG`, so blobs left by ClearAI (`CAIC`)
 | `steps_rev_x`, `steps_rev_y` | 800 | disabled |
 | `mm_rev_x`, `mm_rev_y` | 5.0 | disabled |
 | `dir_x`, `dir_y` | 1 (or -1) | disabled |
+| `kinematics` | 0 Cartesian, 1 CoreXY / H-bot | disabled |
+| `swap_xy` | 0 (1 = exchange X and Y) | disabled |
 | `width_mm`, `height_mm` | 400, 300 | idle (no job running) |
 | `draw_mm_s`, `travel_mm_s`, `max_mm_s` | 100, 200, 250 | live |
-| `accel_mm_s2`, `corner_mm_s` | 2000, 20 | live |
+| `accel_mm_s2`, `corner_mm_s` | 2000, 20 | live. `corner_mm_s` is per motor |
+| `motor_max_mm_s` | 0 (no limit) | live. Highest motor speed as belt mm/s; matters for CoreXY |
 | `pen_mode` | 0 (IO) / 1 (Z on M2) | disabled |
 | `pen_io`, `pen_active_high` | 0, 1 | disabled |
 | `pen_down_ms`, `pen_up_ms` | 150, 100 | live |

@@ -9,7 +9,7 @@ ClearHPGL is firmware that makes a [Teknic ClearCore](https://teknic.com/product
 It comes with **ClearHPGL**, an optional Windows desktop app for previewing drawings, sending jobs and watching the pen move.
 
 > [!WARNING]
-> **Experimental.** ClearHPGL runs on a bench machine (ClearCore, ClearPath-SD servos on X and Y, pen on an output) and plots real jobs, including directly from AutoCAD. It is not certified for production or safety-critical use. Always keep a physical E-stop in the motor power circuit.
+> **Experimental.** ClearHPGL runs on a bench machine (a CoreXY gantry: ClearCore, two ClearPath-SD servos on the belts, pen on an output, limit and home switches) and plots real jobs, including directly from AutoCAD. It is not certified for production or safety-critical use. Always keep a physical E-stop in the motor power circuit.
 
 ## Highlights
 

@@ -31,7 +31,7 @@ disabled. \\
 \cmd{enable} & Enable the motors. This also clears a latched fault. With
 \key{hlfb_check}~1, the board waits for HLFB from all servos. \\
 \cmd{disable} & Disable the motors. A job that is in the queue is dropped. \\
-\cmd{abort} & Stop now, drop the job, and raise the pen. \\
+\cmd{abort} & Stop with a ramp along the path (three times \key{accel_mm_s2}), drop the job, and raise the pen. This also stops a jog or homing. \\
 \cmd{pause} & Stop at the end of the segments in the queue, and raise the pen. \\
 \cmd{resume} & Lower the pen and continue after \cmd{pause}. \\
 \cmd{origin} & The present position becomes plotter 0,0, and the step counters

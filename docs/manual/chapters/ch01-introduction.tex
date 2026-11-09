@@ -105,6 +105,10 @@ the firmware.
   \item[Safety] Monitors the emergency stop, the servo alerts, and the servo
         ready signals (HLFB) all the time. A fault disables the motors, stops
         the job, and latches until you clear it.
+  \item[Limits and homing] Optional limit and home switches on the free
+        inputs. A limit switch stops the axis in the same 0.2~ms sample in
+        which it trips. Homing gives plotter 0,0 the same place on the bed
+        each time (chapter~\ref{ch:limits}).
 \end{description}
 
 \section{What ClearHPGL Does Not Do}\label{sec:limits}
@@ -114,7 +118,7 @@ Do not plan a machine that needs them.
 
 \begin{table}[htbp]
 \centering
-\caption{Functions not in firmware version 0.1.0}\label{tab:limits}
+\caption{Functions not in firmware version \fwversion}\label{tab:limits}
 \begin{tabularx}{\linewidth}{@{}P{0.3\linewidth}L@{}}
 \toprule
 \textbf{Function} & \textbf{Result} \\
@@ -124,8 +128,8 @@ Text (\cmd{LB}) & The board reads the text and does not draw it. The
 Set your CAD software to send text as lines (``explode'' the text). \\
 Area fills & \cmd{RA}, \cmd{RR}, and \cmd{WG} draw only the outline. \\
 Line types and pen widths & All lines are solid. \cmd{LT} and \cmd{PW} have no effect. \\
-Homing and limit switches & The machine has no home position. Plotter 0,0 is
-where the pen is at power-up, or where you set the origin. \\
+Soft limits & The board does not limit the travel to the switch positions.
+The plot area (the hard clip) keeps jobs inside the bed. \\
 Pen changes & The machine has one pen. \cmd{SP} with a number above 1 does not
 stop for a pen change. \\
 Drag knives & The board does not offset the path for a tangential or drag knife. \\

@@ -6,8 +6,8 @@
 \input{preamble}
 
 \newcommand{\docnumber}{CH-UM-100}
-\newcommand{\docrevision}{Revision B}
-\newcommand{\fwversion}{0.1.0}
+\newcommand{\docrevision}{Revision C}
+\newcommand{\fwversion}{0.2.0}
 \newcommand{\docdate}{November 2026}
 
 \begin{document}
@@ -126,11 +126,17 @@ numbers, captions, notes, and bibliography. The preface gives the details.
 \toprule
 \textbf{Revision} & \textbf{Change} \\
 \midrule
-A, \docdate & First issue, for firmware version \fwversion. \\
+A, \docdate & First issue, for firmware version 0.1.0. \\
 B, \docdate & CoreXY and H-bot machines: settings \key{kinematics} (now the
 first setting), \key{pulley_dia_mm}, \key{swap_xy}, and \key{motor_max_mm_s}.
 \cmd{origin} restarts the motor step counters. Firmware update from the app,
 and the ClearPath scope. \\
+C, \docdate & For firmware version \fwversion. Limit and home switches,
+homing on the switches or with ClearPath hard-stop homing, and homing before
+each job (chapter~\ref{ch:limits}). Console commands \cmd{home}, \cmd{jog},
+\cmd{swinfo}, and \cmd{sim}, and new \cmd{status} fields. \cmd{abort} stops
+along the path with a ramp. In the app: the limits and homing wizard, the
+\menu{Home} button, and the homed and limit state in the status bar. \\
 \bottomrule
 \end{tabular}
 }
